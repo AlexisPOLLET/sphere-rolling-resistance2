@@ -69,12 +69,12 @@ st.markdown("""
         color: #2d3436;
         margin: 0.5rem 0;
     }
-    .report-section {
-        background-color: #f8f9fa;
+    .analysis-card {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
         padding: 1.5rem;
         border-radius: 10px;
-        border-left: 4px solid #28a745;
         margin: 1rem 0;
+        border-left: 4px solid #00b894;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -313,32 +313,6 @@ def build_prediction_model(experiments_data):
                 'data_points': len(x_clean)
             }
     
-    # Trajectory efficiency model
-    if df_model['trajectory_efficiency'].notna().sum() >= 3:
-        x_water = df_model['water_content'].values
-        y_traj = df_model['trajectory_efficiency'].values
-        
-        mask = ~(np.isnan(x_water) | np.isnan(y_traj))
-        x_clean = x_water[mask]
-        y_clean = y_traj[mask]
-        
-        if len(x_clean) >= 3:
-            degree = 2 if len(x_clean) >= 4 else 1
-            coeffs = np.polyfit(x_clean, y_clean, degree)
-            
-            y_pred = np.polyval(coeffs, x_clean)
-            r2 = calculate_r2(y_clean, y_pred)
-            std_error = np.std(y_clean - y_pred)
-            
-            models['trajectory_efficiency'] = {
-                'coeffs': coeffs,
-                'degree': degree,
-                'r2': r2,
-                'data_range': (x_clean.min(), x_clean.max()),
-                'std_error': std_error,
-                'data_points': len(x_clean)
-            }
-    
     return models
 
 def predict_with_confidence(model, water_content, confidence_level=0.95):
@@ -407,192 +381,38 @@ def generate_engineering_recommendations(experiments_data, models):
         krr_increase = (max_krr - min_krr) / min_krr * 100
         
         if krr_increase > 50:
-            recommendations.append(f"⚠️ **Sensibilité critique**: {krr_increase:.0f}% d'augmentation de résistance - contrôle d'humidité essentiel")
+            recommendations.append(f"⚠️ **Sensibilité critique**: {krr_increase:.0f}% d'augmentation de résistance")
         elif krr_increase > 20:
-            recommendations.append(f"⚠️ **Sensibilité modérée**: {krr_increase:.0f}% d'augmentation de résistance - surveillance d'humidité recommandée")
+            recommendations.append(f"⚠️ **Sensibilité modérée**: {krr_increase:.0f}% d'augmentation de résistance")
         else:
-            recommendations.append(f"✅ **Faible sensibilité**: Seulement {krr_increase:.0f}% d'augmentation de résistance - humidité moins critique")
-    
-    # Application-specific recommendations
-    recommendations.append("🏭 **Applications industrielles**:")
-    recommendations.append("   • Systèmes de convoyage: Maintenir la teneur en eau ±2% de l'optimum")
-    recommendations.append("   • Transport longue distance: Utiliser une teneur en eau plus faible pour l'efficacité")
-    recommendations.append("   • Applications de précision: Surveiller l'humidité en continu")
+            recommendations.append(f"✅ **Faible sensibilité**: Seulement {krr_increase:.0f}% d'augmentation de résistance")
     
     return recommendations
 
-def generate_auto_report(experiments_data):
-    """Generate comprehensive automatic report"""
-    if not experiments_data:
-        return "Aucune donnée expérimentale disponible pour la génération de rapport."
-    
-    # Build models
-    models = build_prediction_model(experiments_data)
-    
-    # Get recommendations
-    recommendations = generate_engineering_recommendations(experiments_data, models)
-    
-    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    report = f"""
-# 📊 RAPPORT D'ANALYSE AUTOMATIQUE
-## Résistance au Roulement des Sphères sur Matériau Granulaire Humide
-
-**Généré le:** {current_time}  
-**Nombre d'expériences:** {len(experiments_data)}
-
----
-
-## 🎯 RÉSUMÉ EXÉCUTIF
-
-### Principales Découvertes:
-"""
-    
-    # Add key metrics
-    all_krr = []
-    all_water = []
-    all_efficiency = []
-    all_success_rates = []
-    
-    for exp_name, exp in experiments_data.items():
-        df = exp['data']
-        meta = exp['metadata']
-        df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
-        
-        all_success_rates.append(meta['success_rate'])
-        metrics = calculate_advanced_metrics(df_valid)
-        if metrics:
-            if metrics['krr'] is not None:
-                all_krr.append(metrics['krr'])
-            all_water.append(meta['water_content'])
-            if metrics['energy_efficiency']:
-                all_efficiency.append(metrics['energy_efficiency'])
-    
-    if all_krr:
-        report += f"""
-• **Gamme coefficient Krr**: {min(all_krr):.6f} - {max(all_krr):.6f}
-• **Teneur en eau testée**: {min(all_water):.1f}% - {max(all_water):.1f}%
-• **Succès de détection moyen**: {np.mean(all_success_rates):.1f}%
-"""
-    
-    if all_efficiency:
-        report += f"• **Gamme d'efficacité énergétique**: {min(all_efficiency):.1f}% - {max(all_efficiency):.1f}%\n"
-    
-    report += "\n---\n\n## 🔧 RECOMMANDATIONS D'INGÉNIERIE\n\n"
-    
-    for rec in recommendations:
-        report += f"{rec}\n"
-    
-    report += "\n---\n\n## 📈 MODÈLES PRÉDICTIFS\n\n"
-    
-    if models:
-        for param, model in models.items():
-            param_name = param.replace('_', ' ').title()
-            report += f"### {param_name}\n"
-            report += f"• **Qualité du modèle (R²)**: {model['r2']:.3f}\n"
-            report += f"• **Gamme valide**: {model['data_range'][0]:.1f}% - {model['data_range'][1]:.1f}% teneur en eau\n"
-            report += f"• **Erreur standard**: ±{model['std_error']:.6f}\n"
-            report += f"• **Points de données**: {model['data_points']}\n"
-            
-            if model['degree'] == 2:
-                a, b, c = model['coeffs']
-                report += f"• **Équation**: {param_name} = {a:.6f}×W² + {b:.6f}×W + {c:.6f}\n"
-            else:
-                a, b = model['coeffs']
-                report += f"• **Équation**: {param_name} = {a:.6f}×W + {b:.6f}\n"
-            report += "\n"
-    else:
-        report += "⚠️ Données insuffisantes pour des modèles prédictifs fiables.\n"
-        report += "**Recommandation**: Collecter plus d'expériences avec teneur en eau variée.\n\n"
-    
-    report += "---\n\n## 📊 DÉTAILS EXPÉRIMENTAUX\n\n"
-    
-    for exp_name, exp in experiments_data.items():
-        meta = exp['metadata']
-        df = exp['data']
-        df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
-        
-        metrics = calculate_advanced_metrics(df_valid)
-        
-        report += f"### {exp_name}\n"
-        report += f"• **Date**: {meta['date']}\n"
-        report += f"• **Teneur en eau**: {meta['water_content']}%\n"
-        report += f"• **Type de sphère**: {meta['sphere_type']}\n"
-        report += f"• **Succès de détection**: {meta['success_rate']:.1f}%\n"
-        
-        if metrics:
-            report += f"• **Coefficient Krr**: {metrics['krr']:.6f}\n" if metrics['krr'] else "• **Coefficient Krr**: N/A\n"
-            report += f"• **Vitesse maximale**: {metrics['max_velocity']*1000:.1f} mm/s\n"
-            report += f"• **Efficacité énergétique**: {metrics['energy_efficiency']:.1f}%\n"
-        
-        report += "\n"
-    
-    report += "---\n\n## ⚠️ LIMITATIONS & RECOMMANDATIONS\n\n"
-    report += "### Qualité des Données:\n"
-    
-    avg_success = np.mean(all_success_rates)
-    
-    if avg_success >= 80:
-        report += "✅ **Excellente qualité de détection** - Résultats très fiables\n"
-    elif avg_success >= 70:
-        report += "✅ **Bonne qualité de détection** - Résultats fiables\n"
-    elif avg_success >= 60:
-        report += "⚠️ **Qualité de détection modérée** - Considérer l'amélioration du setup\n"
-    else:
-        report += "❌ **Mauvaise qualité de détection** - Résultats potentiellement peu fiables\n"
-    
-    report += "\n### Validité du Modèle:\n"
-    if models and any(model['r2'] > 0.8 for model in models.values()):
-        report += "✅ **Modèles prédictifs solides** - Extrapolation confiante dans la gamme testée\n"
-    elif models and any(model['r2'] > 0.6 for model in models.values()):
-        report += "⚠️ **Modèles prédictifs modérés** - Utiliser les prédictions avec prudence\n"
-    else:
-        report += "❌ **Modèles prédictifs faibles** - Plus de points de données nécessaires\n"
-    
-    report += "\n### Prochaines Étapes:\n"
-    if len(experiments_data) < 5:
-        report += "• **Augmenter le nombre d'expériences** - Viser 8-10 expériences pour des modèles robustes\n"
-    
-    water_range = max(all_water) - min(all_water) if all_water else 0
-    if water_range < 15:
-        report += "• **Élargir la gamme de teneur en eau** - Tester des conditions d'humidité plus larges\n"
-    
-    sphere_types = set([exp['metadata']['sphere_type'] for exp in experiments_data.values()])
-    if len(sphere_types) < 2:
-        report += "• **Tester plusieurs matériaux de sphères** - Comparer acier, plastique, verre\n"
-    
-    report += "\n---\n\n## 📞 CONTACT & MÉTHODOLOGIE\n\n"
-    report += "**Institution de Recherche**: Department of Cosmic Earth Science, Graduate School of Science, Osaka University\n"
-    report += "**Domaine de Recherche**: Mécanique Granulaire\n"
-    report += "**Innovation**: Première étude systématique des effets d'humidité sur la résistance au roulement\n\n"
-    report += "**Méthodologie**: Suivi de sphères par vision par ordinateur avec analyse cinématique\n"
-    report += "**Détection**: Soustraction d'arrière-plan avec transformées de Hough circulaires\n"
-    report += "**Analyse**: Calcul Krr utilisant les principes de conservation d'énergie\n"
-    
-    return report
+# ==================== MAIN APPLICATION ====================
 
 # Page navigation
 st.sidebar.markdown("### 📋 Navigation")
 page = st.sidebar.radio("Sélectionner la Page:", [
-    "🏠 Analyse Unique",
+    "🏠 Analyse Unique Détaillée",
     "🔍 Comparaison Multi-Expériences", 
     "🎯 Module de Prédiction",
     "📊 Rapport Auto-Généré"
 ])
 
-# ==================== SINGLE ANALYSIS PAGE ====================
-if page == "🏠 Analyse Unique":
+# ==================== MAIN SINGLE ANALYSIS PAGE ====================
+if page == "🏠 Analyse Unique Détaillée":
     st.markdown("""
     # ⚪ Plateforme d'Analyse de Résistance au Roulement des Sphères
     ## 🔬 Suite d'Analyse Complète pour la Recherche en Mécanique Granulaire
-    *Téléchargez vos données et accédez à nos outils d'analyse spécialisés*
+    *Analyses détaillées avec visualisation, calcul Krr et métriques avancées*
     """)
 
     # File upload section
     st.markdown("""
     <div class="upload-section">
         <h2>📂 Téléchargez Vos Données Expérimentales</h2>
-        <p>Commencez par télécharger votre fichier CSV avec les résultats de détection pour obtenir une analyse personnalisée</p>
+        <p>Commencez par télécharger votre fichier CSV avec les résultats de détection</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -610,7 +430,7 @@ if page == "🏠 Analyse Unique":
     df_valid = None
     
     # Create tabs for different input methods
-    tab1, tab2, tab3 = st.tabs(["📁 Upload Fichier", "🔬 Données d'Exemple", "✍️ Saisie Manuelle"])
+    tab1, tab2 = st.tabs(["📁 Upload Fichier", "🔬 Données d'Exemple"])
     
     with tab1:
         st.markdown("### 📁 Télécharger un Fichier CSV")
@@ -625,17 +445,8 @@ if page == "🏠 Analyse Unique":
         
         if uploaded_file is not None:
             try:
-                # Show file details
-                st.info(f"📄 Fichier: {uploaded_file.name} ({uploaded_file.size} bytes)")
-                
-                # Read the file
                 df = pd.read_csv(uploaded_file)
-                
                 st.success(f"✅ Fichier lu avec succès! {len(df)} lignes trouvées")
-                
-                # Show first few rows for verification
-                st.markdown("#### 👀 Aperçu des Données")
-                st.dataframe(df.head(10))
                 
                 # Check required columns
                 required_columns = ['Frame', 'X_center', 'Y_center', 'Radius']
@@ -643,70 +454,18 @@ if page == "🏠 Analyse Unique":
                 
                 if missing_columns:
                     st.error(f"❌ Colonnes manquantes: {missing_columns}")
-                    st.error(f"📊 Colonnes trouvées: {list(df.columns)}")
-                    st.info("💡 Astuce: Vérifiez que votre fichier CSV contient bien les colonnes requises")
                     df = None
                 else:
-                    st.success("✅ Toutes les colonnes requises sont présentes!")
-                    
-                    # Show column info
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Frames Total", len(df))
-                    with col2:
-                        valid_detections = len(df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)])
-                        st.metric("Détections Valides", valid_detections)
-                    with col3:
-                        success_rate = (valid_detections / len(df) * 100) if len(df) > 0 else 0
-                        st.metric("Taux de Succès", f"{success_rate:.1f}%")
-                    with col4:
-                        zero_detections = len(df) - valid_detections
-                        st.metric("Détections Nulles", zero_detections)
-                    
-                    # Filter valid detections
                     df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
-                    
-                    # Store in session state immediately  
                     st.session_state['current_df'] = df
                     st.session_state['current_df_valid'] = df_valid
                     
-                    if len(df_valid) == 0:
-                        st.warning("⚠️ Aucune détection valide trouvée! Vérifiez vos données.")
-                    else:
-                        st.success(f"✅ {len(df_valid)} détections valides prêtes pour l'analyse!")
-                        
-                        # Debug info
-                        st.info(f"🔍 DEBUG: df_valid shape = {df_valid.shape}, min/max values = X:[{df_valid['X_center'].min():.1f}-{df_valid['X_center'].max():.1f}], Y:[{df_valid['Y_center'].min():.1f}-{df_valid['Y_center'].max():.1f}]")
-                        
-                        # Option to save experiment
-                        if st.button("💾 Sauvegarder l'expérience pour comparaison", key="save_uploaded"):
-                            metadata = {
-                                'experiment_name': experiment_name,
-                                'water_content': water_content,
-                                'sphere_type': sphere_type,
-                                'date': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                'total_frames': len(df),
-                                'valid_detections': len(df_valid),
-                                'success_rate': success_rate
-                            }
-                            st.session_state.experiments[experiment_name] = {
-                                'data': df,
-                                'metadata': metadata
-                            }
-                            st.success(f"Expérience '{experiment_name}' sauvegardée pour comparaison!")
-                            
             except Exception as e:
                 st.error(f"❌ Erreur lors du chargement du fichier: {str(e)}")
-                st.info("💡 Astuces de dépannage:")
-                st.info("• Vérifiez que le fichier est bien un CSV")
-                st.info("• Vérifiez l'encodage (UTF-8 recommandé)")
-                st.info("• Vérifiez les séparateurs (virgules)")
     
     with tab2:
         st.markdown("### 🔬 Utiliser des Données d'Exemple")
-        st.info("Parfait pour tester l'application sans fichier CSV")
         
-        # Sample data options
         col1, col2 = st.columns(2)
         with col1:
             sample_water = st.slider("Teneur en Eau d'Exemple (%)", 0.0, 25.0, 10.0, 0.5)
@@ -721,84 +480,15 @@ if page == "🏠 Analyse Unique":
             )
             df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
             
-            # Store in session state immediately
             st.session_state['current_df'] = df
             st.session_state['current_df_valid'] = df_valid
             
             st.success("📊 Données d'exemple générées avec succès!")
-            st.info(f"✅ {len(df)} frames générées, {len(df_valid)} détections valides")
-            
-            # Show sample data preview
-            st.markdown("#### 👀 Aperçu des Données d'Exemple")
-            st.dataframe(df.head(10))
-            
-            # Debug info
-            st.info(f"🔍 DEBUG: df_valid shape = {df_valid.shape}, data stored in session_state")
-    
-    with tab3:
-        st.markdown("### ✍️ Saisie Manuelle de Données")
-        st.info("Pour saisir quelques points de données manuellement")
-        
-        # Manual data entry
-        if 'manual_data' not in st.session_state:
-            st.session_state.manual_data = []
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            frame_input = st.number_input("Frame", value=1, min_value=1, key="manual_frame")
-        with col2:
-            x_input = st.number_input("X_center", value=100.0, key="manual_x")
-        with col3:
-            y_input = st.number_input("Y_center", value=100.0, key="manual_y")
-        with col4:
-            radius_input = st.number_input("Radius", value=20.0, min_value=0.1, key="manual_radius")
-        with col5:
-            if st.button("➕ Ajouter Point", key="add_manual"):
-                st.session_state.manual_data.append({
-                    'Frame': frame_input,
-                    'X_center': x_input,
-                    'Y_center': y_input,
-                    'Radius': radius_input
-                })
-                st.success("Point ajouté!")
-        
-        if st.session_state.manual_data:
-            st.markdown(f"#### 📊 Données Saisies ({len(st.session_state.manual_data)} points)")
-            manual_df = pd.DataFrame(st.session_state.manual_data)
-            st.dataframe(manual_df)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("✅ Utiliser ces données", key="use_manual"):
-                    df = manual_df
-                    df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
-                    
-                    # Store in session state immediately
-                    st.session_state['current_df'] = df
-                    st.session_state['current_df_valid'] = df_valid
-                    
-                    st.success("Données manuelles chargées pour l'analyse!")
-                    st.info(f"🔍 DEBUG: {len(df_valid)} détections valides stockées")
-            
-            with col2:
-                if st.button("🗑️ Effacer tout", key="clear_manual"):
-                    st.session_state.manual_data = []
-                    st.success("Données effacées!")
-                    st.rerun()
 
-    # Store data in session state for persistence across interactions
-    if df is not None:
-        st.session_state['current_df'] = df
-        if df_valid is not None and len(df_valid) > 0:
-            st.session_state['current_df_valid'] = df_valid
-    
-    # Use data from session state if available, with debug info
+    # Use data from session state if available
     if 'current_df' in st.session_state and 'current_df_valid' in st.session_state:
         df = st.session_state['current_df']
         df_valid = st.session_state['current_df_valid']
-        
-        # Debug information
-        st.info(f"🔍 DEBUG: Données chargées depuis session_state - {len(df_valid)} détections valides disponibles")
     
     # Analysis section - ALWAYS show if we have data
     if df is not None and df_valid is not None and len(df_valid) > 0:
@@ -841,307 +531,658 @@ if page == "🏠 Analyse Unique":
             </div>
             """, unsafe_allow_html=True)
         
-        # Simple analysis and visualization
-        st.markdown("### 📈 Analyse Rapide")
+        # Add option to save experiment for comparison
+        if st.button("💾 Sauvegarder l'expérience pour comparaison"):
+            metadata = {
+                'experiment_name': experiment_name,
+                'water_content': water_content,
+                'sphere_type': sphere_type,
+                'date': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'total_frames': len(df),
+                'valid_detections': len(df_valid),
+                'success_rate': len(df_valid) / len(df) * 100 if len(df) > 0 else 0
+            }
+            st.session_state.experiments[experiment_name] = {
+                'data': df,
+                'metadata': metadata
+            }
+            st.success(f"Expérience '{experiment_name}' sauvegardée pour comparaison!")
         
-        col1, col2 = st.columns(2)
+        # Navigation between the 3 detailed analysis codes
+        st.markdown("---")
+        st.markdown("## 🔧 Analyses Détaillées Disponibles")
         
-        with col1:
-            # Trajectory plot
-            fig_traj = px.scatter(df_valid, x='X_center', y='Y_center', 
-                               color='Frame', 
-                               title="🛤️ Trajectoire de la Sphère",
-                               labels={'X_center': 'Position X (pixels)', 
-                                      'Y_center': 'Position Y (pixels)',
-                                      'Frame': 'Frame'})
-            fig_traj.update_yaxes(autorange="reversed")
-            st.plotly_chart(fig_traj, use_container_width=True)
+        # Sidebar for navigation
+        st.sidebar.title("🧭 Types d'Analyse")
+        analysis_type = st.sidebar.selectbox("Sélectionnez le type d'analyse :", [
+            "📈 Code 1 : Visualisation de Trajectoire",
+            "📊 Code 2 : Analyse Krr Détaillée",
+            "🔬 Code 3 : Analyse Complète Avancée",
+            "📋 Vue d'ensemble des données"
+        ])
         
-        with col2:
-            # Radius evolution
-            fig_radius = px.line(df_valid, x='Frame', y='Radius',
-                               title="⚪ Évolution du Rayon Détecté",
-                               labels={'Frame': 'Numéro de Frame', 
-                                      'Radius': 'Rayon (pixels)'})
-            st.plotly_chart(fig_radius, use_container_width=True)
-        
-        # Basic Krr calculation
-        st.markdown("---")  # Séparateur visuel
-        st.markdown("### 🧮 Calcul Krr et Analyse Avancée")
-        
-        # Parameters input in columns
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("**⚙️ Paramètres Caméra**")
-            fps = st.number_input("FPS Caméra", value=250.0, min_value=1.0, max_value=1000.0, key="fps_input")
-            pixels_per_mm = st.number_input("Calibration (px/mm)", value=5.0, min_value=0.1, max_value=50.0, key="calib_input")
-        
-        with col2:
-            st.markdown("**🔧 Paramètres Sphère**")
-            sphere_mass_g = st.number_input("Masse Sphère (g)", value=10.0, min_value=0.1, max_value=1000.0, key="mass_input")
-            angle_deg = st.number_input("Angle Inclinaison (°)", value=15.0, min_value=0.1, max_value=45.0, key="angle_input")
-        
-        with col3:
-            st.markdown("**🎯 Actions**")
-            st.write("")  # Spacing
-            calculate_krr = st.button("🚀 Calculer Krr et Métriques", type="primary", key="calc_krr_btn")
-            st.write("")
-            show_basic_plots = st.button("📈 Afficher Graphiques de Base", key="basic_plots_btn")
-        
-        # Always show basic plots if requested
-        if show_basic_plots:
-            st.markdown("### 📈 Graphiques de Base")
+        # === CODE 1: DETECTION AND TRAJECTORY VISUALIZATION ===
+        if analysis_type == "📈 Code 1 : Visualisation de Trajectoire":
+            st.markdown("""
+            <div class="analysis-card">
+                <h2>📈 Code 1 : Détection et Visualisation de Trajectoire</h2>
+                <p>Système complet de détection de sphères avec analyse de trajectoire</p>
+            </div>
+            """, unsafe_allow_html=True)
             
-            col1, col2 = st.columns(2)
+            # Detection configuration
+            st.markdown("### ⚙️ Configuration de Détection")
+            col1, col2, col3 = st.columns(3)
             
             with col1:
-                # Trajectory plot
-                fig_traj = px.scatter(df_valid, x='X_center', y='Y_center', 
-                                   color='Frame', 
-                                   title="🛤️ Trajectoire de la Sphère",
-                                   labels={'X_center': 'Position X (pixels)', 
-                                          'Y_center': 'Position Y (pixels)',
-                                          'Frame': 'Frame'})
-                fig_traj.update_yaxes(autorange="reversed")
-                fig_traj.update_layout(height=400)
-                st.plotly_chart(fig_traj, use_container_width=True)
-            
+                st.markdown("**Paramètres de Taille**")
+                minR = st.slider("Rayon minimum", 10, 30, 18)
+                maxR = st.slider("Rayon maximum", 25, 50, 35)
+                
             with col2:
-                # Radius evolution
-                fig_radius = px.line(df_valid, x='Frame', y='Radius',
-                                   title="⚪ Évolution du Rayon Détecté",
-                                   labels={'Frame': 'Numéro de Frame', 
-                                          'Radius': 'Rayon (pixels)'})
-                fig_radius.update_layout(height=400)
-                st.plotly_chart(fig_radius, use_container_width=True)
-            
-            # Position evolution
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                fig_x = px.line(df_valid, x='Frame', y='X_center',
-                               title="📍 Position X vs Frame",
-                               labels={'Frame': 'Numéro de Frame', 
-                                      'X_center': 'Position X (pixels)'})
-                fig_x.update_layout(height=350)
-                st.plotly_chart(fig_x, use_container_width=True)
-            
-            with col2:
-                fig_y = px.line(df_valid, x='Frame', y='Y_center',
-                               title="📍 Position Y vs Frame", 
-                               labels={'Frame': 'Numéro de Frame',
-                                      'Y_center': 'Position Y (pixels)'})
-                fig_y.update_layout(height=350)
-                st.plotly_chart(fig_y, use_container_width=True)
-        
-        # Advanced analysis if calculate button is pressed
-        if calculate_krr:
-            st.markdown("### 🔬 Analyse Avancée et Calcul Krr")
-            
-            # Additional debug info before calculation
-            st.info(f"🔍 DEBUG CALCUL: df_valid shape = {df_valid.shape}, colonnes = {list(df_valid.columns)}")
-            st.info(f"🔍 DEBUG CALCUL: Valeurs non-nulles X={df_valid['X_center'].notna().sum()}, Y={df_valid['Y_center'].notna().sum()}, R={df_valid['Radius'].notna().sum()}")
-            
-            with st.spinner("🧮 Calcul des métriques avancées en cours..."):
-                try:
-                    metrics = calculate_advanced_metrics(df_valid, fps, pixels_per_mm, sphere_mass_g, angle_deg)
-                    st.info(f"🔍 DEBUG: Métrics calculées = {metrics is not None}")
-                    if metrics:
-                        st.info(f"🔍 DEBUG: Krr = {metrics.get('krr', 'None')}")
-                except Exception as e:
-                    st.error(f"❌ Erreur dans calculate_advanced_metrics: {str(e)}")
-                    metrics = None
-            
-            if metrics and metrics['krr'] is not None:
-                # Display main Krr result
-                col1, col2, col3 = st.columns(3)
+                st.markdown("**Paramètres de Détection**")
+                bw_threshold = st.slider("Seuil de détection", 1, 20, 8)
+                min_score = st.slider("Score minimum", 20, 60, 40)
                 
-                with col2:  # Center the main result
-                    st.markdown(f"""
-                    <div class="prediction-card">
-                        <h4>🎯 Résultat Principal</h4>
-                        <h2>Krr = {metrics['krr']:.6f}</h2>
-                        <p>Vitesse Max: {metrics['max_velocity']*1000:.1f} mm/s</p>
-                        <p>Distance: {metrics['distance']*1000:.1f} mm</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+            with col3:
+                st.markdown("**Paramètres de Forme**")
+                circularity_min = st.slider("Circularité minimum", 0.1, 1.0, 0.5)
+                max_movement = st.slider("Mouvement max", 50, 200, 120)
+            
+            # Visualization of loaded data
+            if len(df_valid) > 0:
+                st.markdown("### 🎯 Trajectoire de la Sphère Détectée")
                 
-                # Additional metrics in a grid
-                st.markdown("#### 📊 Métriques Détaillées")
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Distance Totale", f"{metrics['distance']*1000:.1f} mm")
-                    st.metric("Vitesse Initiale", f"{metrics['v0']*1000:.1f} mm/s")
-                with col2:
-                    st.metric("Durée", f"{metrics['duration']:.2f} s")
-                    st.metric("Vitesse Finale", f"{metrics['vf']*1000:.1f} mm/s")
-                with col3:
-                    st.metric("Efficacité Énergétique", f"{metrics['energy_efficiency']:.1f}%")
-                    st.metric("Accélération Max", f"{metrics['max_acceleration']*1000:.1f} mm/s²")
-                with col4:
-                    st.metric("Efficacité Trajectoire", f"{metrics['trajectory_efficiency']:.1f}%")
-                    st.metric("Force Résistance Max", f"{metrics['max_resistance_force']*1000:.1f} mN")
-                
-                # Advanced visualization
-                st.markdown("#### 📈 Visualisations Cinématiques")
-                
-                # Create comprehensive plots
-                fig_comprehensive = make_subplots(
+                # Main trajectory plot
+                fig = make_subplots(
                     rows=2, cols=2,
-                    subplot_titles=('🏃 Vitesse vs Temps', '🚀 Accélération vs Temps', 
-                                   '⚡ Puissance vs Temps', '🔋 Énergie Cinétique vs Temps'),
-                    vertical_spacing=0.12
+                    subplot_titles=('🛤️ Trajectoire Complète', '📍 Position X vs Temps', 
+                                   '📍 Position Y vs Temps', '⚪ Évolution du Rayon'),
+                    specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                           [{"secondary_y": False}, {"secondary_y": False}]]
                 )
                 
-                # Velocity plot
-                fig_comprehensive.add_trace(
-                    go.Scatter(x=metrics['time'], y=metrics['velocity']*1000, 
-                             mode='lines', name='Vitesse', line=dict(color='blue', width=2)),
+                # Trajectory with color gradient based on time
+                fig.add_trace(
+                    go.Scatter(x=df_valid['X_center'], y=df_valid['Y_center'],
+                              mode='markers+lines', 
+                              marker=dict(color=df_valid['Frame'], 
+                                        colorscale='viridis', 
+                                        size=8,
+                                        colorbar=dict(title="Frame")),
+                              line=dict(width=2),
+                              name='Trajectoire'),
                     row=1, col=1
                 )
                 
-                # Acceleration plot  
-                fig_comprehensive.add_trace(
-                    go.Scatter(x=metrics['time'], y=metrics['acceleration']*1000,
-                             mode='lines', name='Accélération', line=dict(color='red', width=2)),
+                # X Position
+                fig.add_trace(
+                    go.Scatter(x=df_valid['Frame'], y=df_valid['X_center'],
+                              mode='lines+markers', 
+                              line=dict(color='#3498db', width=3),
+                              name='Position X'),
                     row=1, col=2
                 )
                 
-                # Power plot
-                fig_comprehensive.add_trace(
-                    go.Scatter(x=metrics['time'], y=metrics['power']*1000,
-                             mode='lines', name='Puissance', line=dict(color='green', width=2)),
+                # Y Position
+                fig.add_trace(
+                    go.Scatter(x=df_valid['Frame'], y=df_valid['Y_center'],
+                              mode='lines+markers',
+                              line=dict(color='#e74c3c', width=3),
+                              name='Position Y'),
                     row=2, col=1
                 )
                 
-                # Energy plot
-                fig_comprehensive.add_trace(
-                    go.Scatter(x=metrics['time'], y=metrics['energy_kinetic']*1000,
-                             mode='lines', name='Énergie', line=dict(color='purple', width=2)),
+                # Detected radius
+                fig.add_trace(
+                    go.Scatter(x=df_valid['Frame'], y=df_valid['Radius'],
+                              mode='lines+markers',
+                              line=dict(color='#2ecc71', width=3),
+                              name='Rayon'),
                     row=2, col=2
                 )
                 
-                # Update axes labels
-                fig_comprehensive.update_xaxes(title_text="Temps (s)")
-                fig_comprehensive.update_yaxes(title_text="Vitesse (mm/s)", row=1, col=1)
-                fig_comprehensive.update_yaxes(title_text="Accélération (mm/s²)", row=1, col=2)
-                fig_comprehensive.update_yaxes(title_text="Puissance (mW)", row=2, col=1)
-                fig_comprehensive.update_yaxes(title_text="Énergie (mJ)", row=2, col=2)
+                fig.update_layout(height=800, showlegend=False,
+                                 title_text="Analyse Complète de Détection")
                 
-                fig_comprehensive.update_layout(height=600, showlegend=False)
-                st.plotly_chart(fig_comprehensive, use_container_width=True)
+                # Reverse Y axis for trajectory (image coordinates)
+                fig.update_yaxes(autorange="reversed", row=1, col=1)
                 
-                # Export detailed data
-                st.markdown("#### 💾 Exporter les Données")
+                st.plotly_chart(fig, use_container_width=True)
                 
-                col1, col2, col3 = st.columns(3)
+                # Detection statistics
+                st.markdown("### 📊 Statistiques de Détection")
+                col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    # Basic results
-                    basic_results = pd.DataFrame({
-                        'Parametre': ['Krr', 'Vitesse_Max_mm/s', 'Distance_mm', 'Duree_s', 'Efficacite_Energie_%'],
-                        'Valeur': [
-                            metrics['krr'],
-                            metrics['max_velocity']*1000,
-                            metrics['distance']*1000,
-                            metrics['duration'],
-                            metrics['energy_efficiency']
-                        ]
-                    })
-                    
-                    csv_basic = basic_results.to_csv(index=False)
-                    st.download_button(
-                        label="📋 Résultats Principaux (CSV)",
-                        data=csv_basic,
-                        file_name="resultats_principaux.csv",
-                        mime="text/csv"
+                    total_distance = np.sqrt(
+                        (df_valid['X_center'].iloc[-1] - df_valid['X_center'].iloc[0])**2 + 
+                        (df_valid['Y_center'].iloc[-1] - df_valid['Y_center'].iloc[0])**2
                     )
-                
+                    st.metric("Distance Totale", f"{total_distance:.1f} px")
+                    
                 with col2:
-                    # Detailed time series
-                    detailed_data = pd.DataFrame({
-                        'temps_s': metrics['time'],
-                        'vitesse_mm_s': metrics['velocity']*1000,
-                        'acceleration_mm_s2': metrics['acceleration']*1000,
-                        'force_resistance_mN': metrics['resistance_force']*1000,
-                        'puissance_mW': metrics['power']*1000,
-                        'energie_cinetique_mJ': metrics['energy_kinetic']*1000
-                    })
-                    
-                    csv_detailed = detailed_data.to_csv(index=False)
-                    st.download_button(
-                        label="📈 Données Temporelles (CSV)",
-                        data=csv_detailed,
-                        file_name="donnees_temporelles.csv",
-                        mime="text/csv"
-                    )
-                
+                    if len(df_valid) > 1:
+                        dx = df_valid['X_center'].diff()
+                        dy = df_valid['Y_center'].diff()
+                        speed = np.sqrt(dx**2 + dy**2)
+                        avg_speed = speed.mean()
+                        st.metric("Vitesse Moyenne", f"{avg_speed:.2f} px/frame")
+                        
                 with col3:
-                    # Raw trajectory data
-                    trajectory_data = df_valid.copy()
-                    trajectory_data['temps_s'] = np.arange(len(trajectory_data)) / fps
+                    vertical_displacement = abs(df_valid['Y_center'].iloc[-1] - df_valid['Y_center'].iloc[0])
+                    st.metric("Déplacement Vertical", f"{vertical_displacement:.1f} px")
                     
-                    csv_trajectory = trajectory_data.to_csv(index=False)
-                    st.download_button(
-                        label="🛤️ Données Trajectoire (CSV)",
-                        data=csv_trajectory,
-                        file_name="donnees_trajectoire.csv",
-                        mime="text/csv"
-                    )
+                with col4:
+                    avg_radius = df_valid['Radius'].mean()
+                    radius_std = df_valid['Radius'].std()
+                    st.metric("Rayon Moyen", f"{avg_radius:.1f} ± {radius_std:.1f} px")
                 
-                # Physical interpretation
-                st.markdown("#### 🧠 Interprétation Physique")
+                # Detection quality analysis
+                st.markdown("### 🔍 Qualité de Détection")
                 
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.markdown("**🎯 Qualité de l'Expérience:**")
-                    if metrics['trajectory_efficiency'] > 90:
-                        st.success("✅ Trajectoire très droite - Excellente qualité")
-                    elif metrics['trajectory_efficiency'] > 80:
-                        st.success("✅ Trajectoire droite - Bonne qualité")
-                    elif metrics['trajectory_efficiency'] > 70:
-                        st.warning("⚠️ Trajectoire légèrement déviée")
-                    else:
-                        st.error("❌ Trajectoire très déviée - Vérifier le setup")
+                    fig_radius = px.histogram(df_valid, x='Radius', nbins=15,
+                                             title="Distribution des Rayons Détectés",
+                                             labels={'Radius': 'Rayon (pixels)', 'count': 'Fréquence'})
+                    fig_radius.add_vline(x=minR, line_dash="dash", line_color="red", 
+                                        annotation_text=f"Min: {minR}")
+                    fig_radius.add_vline(x=maxR, line_dash="dash", line_color="red", 
+                                        annotation_text=f"Max: {maxR}")
+                    st.plotly_chart(fig_radius, use_container_width=True)
                     
-                    if metrics['energy_efficiency'] > 70:
-                        st.success("✅ Bonne conservation d'énergie")
-                    elif metrics['energy_efficiency'] > 50:
-                        st.warning("⚠️ Perte d'énergie modérée")
-                    else:
-                        st.error("❌ Perte d'énergie importante")
-                
                 with col2:
-                    st.markdown("**📚 Comparaison Littérature:**")
-                    if metrics['krr'] is not None:
-                        if 0.03 <= metrics['krr'] <= 0.10:
-                            st.success("✅ Krr cohérent avec Van Wal (2017)")
-                        elif metrics['krr'] < 0:
-                            st.error("⚠️ Krr négatif - sphère accélère!")
-                        elif metrics['krr'] > 0.15:
-                            st.warning("⚠️ Krr très élevé - vérifier conditions")
-                        else:
-                            st.info("💡 Krr en dehors de la gamme littérature")
+                    # Movement continuity analysis
+                    if len(df_valid) > 1:
+                        dx = df_valid['X_center'].diff()
+                        dy = df_valid['Y_center'].diff()
+                        movement = np.sqrt(dx**2 + dy**2)
+                        movement_clean = movement.dropna()
+                        frames_clean = df_valid['Frame'][1:len(movement_clean)+1]
                         
-                        st.metric("Référence Van Wal", "0.05-0.07", f"{(metrics['krr']-0.06)/0.06*100:+.1f}%")
+                        fig_movement = go.Figure()
+                        fig_movement.add_trace(go.Scatter(
+                            x=frames_clean, 
+                            y=movement_clean,
+                            mode='lines+markers',
+                            name='Mouvement',
+                            line=dict(color='blue', width=2)
+                        ))
+                        fig_movement.add_hline(y=max_movement, line_dash="dash", line_color="red",
+                                              annotation_text=f"Max autorisé: {max_movement}")
+                        fig_movement.update_layout(
+                            title="Mouvement Inter-Frame",
+                            xaxis_title="Frame",
+                            yaxis_title="Déplacement (pixels)",
+                            height=400
+                        )
+                        st.plotly_chart(fig_movement, use_container_width=True)
+            
+            # Information about detection algorithm
+            st.markdown("### 🧠 Algorithme de Détection")
+            st.markdown(f"""
+            **Méthode utilisée :** Détection de cercles par soustraction de fond
+            
+            **Étapes principales :**
+            1. **Création du fond** : Moyenne de 150 images de référence
+            2. **Soustraction** : Élimination du fond statique
+            3. **Seuillage** : Binarisation avec seuil adaptatif
+            4. **Morphologie** : Nettoyage des contours
+            5. **Détection** : Recherche de contours circulaires
+            6. **Validation** : Filtrage par taille, forme et continuité
+            
+            **Critères de qualité :**
+            - Taille : {minR} ≤ rayon ≤ {maxR} pixels
+            - Forme : Circularité ≥ {circularity_min}
+            - Continuité : Mouvement ≤ {max_movement} pixels/frame
+            - Score : Qualité globale ≥ {min_score}
+            """)
+        
+        # === CODE 2: KRR ANALYSIS ===
+        elif analysis_type == "📊 Code 2 : Analyse Krr Détaillée":
+            st.markdown("""
+            <div class="analysis-card">
+                <h2>📊 Code 2 : Analyse du Coefficient de Résistance au Roulement (Krr)</h2>
+                <p>Calculs physiques complets pour déterminer le coefficient Krr</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Sphere parameters
+            st.markdown("### 🔵 Paramètres de la Sphère")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                sphere_radius_mm = st.number_input("Rayon de la sphère (mm)", value=15.0, min_value=1.0, max_value=50.0)
+                sphere_mass_g = st.number_input("Masse de la sphère (g)", value=10.0, min_value=0.1, max_value=1000.0)
                 
+            with col2:
+                sphere_type_selection = st.selectbox("Type de sphère", ["Solide (j=2/5)", "Creuse (j=2/3)"])
+                j_value = 2/5 if "Solide" in sphere_type_selection else 2/3
+                
+                # Density calculation
+                volume_mm3 = (4/3) * np.pi * sphere_radius_mm**3
+                volume_m3 = volume_mm3 * 1e-9
+                mass_kg = sphere_mass_g * 1e-3
+                density_kg_m3 = mass_kg / volume_m3
+                st.metric("Densité", f"{density_kg_m3:.0f} kg/m³")
+                
+            with col3:
+                st.metric("Facteur d'inertie j", f"{j_value:.3f}")
+                st.metric("Facteur (1+j)⁻¹", f"{1/(1+j_value):.4f}")
+            
+            # Experimental parameters
+            st.markdown("### 📐 Paramètres Expérimentaux")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                fps = st.number_input("FPS de la caméra", value=250.0, min_value=1.0, max_value=1000.0)
+                angle_deg = st.number_input("Angle d'inclinaison (°)", value=15.0, min_value=0.1, max_value=45.0)
+                
+            with col2:
+                # Automatic calibration based on detected radius
+                if len(df_valid) > 0:
+                    avg_radius_pixels = df_valid['Radius'].mean()
+                    auto_calibration = avg_radius_pixels / sphere_radius_mm
+                    st.metric("Calibration auto", f"{auto_calibration:.2f} px/mm")
+                    
+                    use_auto_cal = st.checkbox("Utiliser calibration automatique", value=True)
+                    if use_auto_cal:
+                        pixels_per_mm = auto_calibration
+                    else:
+                        pixels_per_mm = st.number_input("Calibration (px/mm)", value=auto_calibration, min_value=0.1)
+                else:
+                    pixels_per_mm = st.number_input("Calibration (px/mm)", value=5.0, min_value=0.1)
+                    
+            with col3:
+                water_content_analysis = st.number_input("Teneur en eau (%)", value=water_content, min_value=0.0, max_value=100.0, key="krr_water")
+                
+            # Kinematic calculations and Krr
+            if len(df_valid) > 10:
+                st.markdown("### 🧮 Calculs Cinématiques")
+                
+                # Unit conversion
+                dt = 1 / fps  # s
+                
+                # Positions in meters
+                x_mm = df_valid['X_center'].values / pixels_per_mm
+                y_mm = df_valid['Y_center'].values / pixels_per_mm
+                x_m = x_mm / 1000
+                y_m = y_mm / 1000
+                
+                # Time
+                t = np.arange(len(df_valid)) * dt
+                
+                # Velocities
+                vx = np.gradient(x_m, dt)
+                vy = np.gradient(y_m, dt)
+                v_magnitude = np.sqrt(vx**2 + vy**2)
+                
+                # Initial and final velocities (average over a few points)
+                n_avg = min(3, len(v_magnitude)//4)
+                v0 = np.mean(v_magnitude[:n_avg])
+                vf = np.mean(v_magnitude[-n_avg:])
+                
+                # Total distance
+                distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
+                total_distance = np.sum(distances)
+                
+                # Calculate Krr coefficient
+                g = 9.81  # m/s²
+                if total_distance > 0:
+                    krr = (v0**2 - vf**2) / (2 * g * total_distance)
+                    
+                    # Effective friction coefficient
+                    angle_rad = np.radians(angle_deg)
+                    mu_eff = krr + np.tan(angle_rad)
+                    
+                    # Display results
+                    st.markdown("### 📈 Résultats Krr")
+                    
+                    result_col1, result_col2, result_col3, result_col4 = st.columns(4)
+                    
+                    with result_col1:
+                        st.metric("V₀ (vitesse initiale)", f"{v0*1000:.1f} mm/s")
+                        st.caption(f"{v0:.4f} m/s")
+                        
+                    with result_col2:
+                        st.metric("Vf (vitesse finale)", f"{vf*1000:.1f} mm/s") 
+                        st.caption(f"{vf:.4f} m/s")
+                        
+                    with result_col3:
+                        st.metric("Distance totale", f"{total_distance*1000:.1f} mm")
+                        st.caption(f"{total_distance:.4f} m")
+                        
+                    with result_col4:
+                        st.metric("**Coefficient Krr**", f"{krr:.6f}")
+                        if 0.03 <= krr <= 0.10:
+                            st.success("✅ Cohérent avec Van Wal (2017)")
+                        elif krr < 0:
+                            st.error("⚠️ Krr négatif - sphère accélère")
+                        else:
+                            st.warning("⚠️ Différent de la littérature")
+                    
+                    # Quick trajectory visualization
+                    st.markdown("### 🎯 Trajectoire et Profil de Vitesse")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        fig_traj = px.scatter(df_valid, x='X_center', y='Y_center', 
+                                           color='Frame', size='Radius',
+                                           title="Trajectoire de la Sphère")
+                        fig_traj.update_yaxes(autorange="reversed")
+                        st.plotly_chart(fig_traj, use_container_width=True)
+                    
+                    with col2:
+                        fig_vel = go.Figure()
+                        fig_vel.add_trace(go.Scatter(x=t, y=v_magnitude*1000, 
+                                                   mode='lines+markers',
+                                                   name='Vitesse',
+                                                   line=dict(color='blue', width=2)))
+                        fig_vel.update_layout(
+                            title="Vitesse vs Temps",
+                            xaxis_title="Temps (s)",
+                            yaxis_title="Vitesse (mm/s)"
+                        )
+                        st.plotly_chart(fig_vel, use_container_width=True)
+                
+                else:
+                    st.error("❌ Distance parcourue nulle - impossible de calculer Krr")
             else:
-                st.error("❌ Impossible de calculer Krr - données insuffisantes ou problème dans les calculs")
-                st.info("💡 Vérifiez que :")
-                st.info("• Vous avez au moins 10 détections valides")
-                st.info("• La sphère se déplace effectivement")
-                st.info("• Les paramètres physiques sont corrects")
-    
+                st.warning("⚠️ Pas assez de données valides pour l'analyse Krr")
+        
+        # === CODE 3: ADVANCED AND COMPLETE ANALYSIS ===
+        elif analysis_type == "🔬 Code 3 : Analyse Complète Avancée":
+            st.markdown("""
+            <div class="analysis-card">
+                <h2>🔬 Code 3 : Analyse Cinématique Avancée et Complète</h2>
+                <p>Analyse approfondie avec debug et métriques avancées</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Data verification
+            st.markdown("### 🔍 Vérification des Données")
+            if len(df_valid) > 0:
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Données valides", f"{len(df_valid)} frames")
+                    st.metric("Taux de succès", f"{len(df_valid)/len(df)*100:.1f}%")
+                    
+                with col2:
+                    radius_range = df_valid['Radius'].max() - df_valid['Radius'].min()
+                    st.metric("Variation de rayon", f"{radius_range:.1f} px")
+                    st.metric("Première détection", f"Frame {df_valid['Frame'].min()}")
+                    
+                with col3:
+                    st.metric("Dernière détection", f"Frame {df_valid['Frame'].max()}")
+                    duration_frames = df_valid['Frame'].max() - df_valid['Frame'].min()
+                    st.metric("Durée de suivi", f"{duration_frames} frames")
+                
+                # Parameters for advanced analysis
+                st.markdown("### ⚙️ Paramètres d'Analyse Avancée")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.markdown("**Paramètres Sphère**")
+                    mass_g = st.number_input("Masse (g)", value=10.0, min_value=0.1, key="adv_mass")
+                    radius_mm = st.number_input("Rayon (mm)", value=15.0, min_value=1.0, key="adv_radius")
+                    sphere_type_adv = st.selectbox("Type", ["Solide", "Creuse"], key="adv_type")
+                    j_factor = 2/5 if sphere_type_adv == "Solide" else 2/3
+                    
+                with col2:
+                    st.markdown("**Paramètres Expérimentaux**")
+                    fps_adv = st.number_input("FPS", value=250.0, min_value=1.0, key="adv_fps")
+                    angle_deg_adv = st.number_input("Angle (°)", value=15.0, min_value=0.1, key="adv_angle")
+                    
+                    # Automatic calibration
+                    if len(df_valid) > 0:
+                        avg_radius_px = df_valid['Radius'].mean()
+                        auto_cal = avg_radius_px / radius_mm
+                        st.metric("Calibration auto", f"{auto_cal:.2f} px/mm")
+                        pixels_per_mm_adv = auto_cal
+                
+                with col3:
+                    st.markdown("**Filtrage des Données**")
+                    use_smoothing = st.checkbox("Lissage des données", value=True)
+                    smooth_window = st.slider("Fenêtre de lissage", 3, 11, 5, step=2)
+                    remove_outliers = st.checkbox("Supprimer les aberrants", value=True)
+                
+                # Advanced kinematic calculations
+                if st.button("🚀 Lancer l'Analyse Complète"):
+                    
+                    st.markdown("### 🧮 Calculs Cinématiques Avancés")
+                    
+                    with st.spinner("🧮 Calcul des métriques avancées en cours..."):
+                        metrics = calculate_advanced_metrics(df_valid, fps_adv, pixels_per_mm_adv, mass_g, angle_deg_adv)
+                    
+                    if metrics and metrics['krr'] is not None:
+                        # Display main results
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col2:  # Center the main result
+                            st.markdown(f"""
+                            <div class="prediction-card">
+                                <h4>🎯 Résultat Principal</h4>
+                                <h2>Krr = {metrics['krr']:.6f}</h2>
+                                <p>Vitesse Max: {metrics['max_velocity']*1000:.1f} mm/s</p>
+                                <p>Distance: {metrics['distance']*1000:.1f} mm</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        # Additional metrics in a grid
+                        st.markdown("#### 📊 Métriques Détaillées")
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric("Distance Totale", f"{metrics['distance']*1000:.1f} mm")
+                            st.metric("Vitesse Initiale", f"{metrics['v0']*1000:.1f} mm/s")
+                        with col2:
+                            st.metric("Durée", f"{metrics['duration']:.2f} s")
+                            st.metric("Vitesse Finale", f"{metrics['vf']*1000:.1f} mm/s")
+                        with col3:
+                            st.metric("Efficacité Énergétique", f"{metrics['energy_efficiency']:.1f}%")
+                            st.metric("Accélération Max", f"{metrics['max_acceleration']*1000:.1f} mm/s²")
+                        with col4:
+                            st.metric("Efficacité Trajectoire", f"{metrics['trajectory_efficiency']:.1f}%")
+                            st.metric("Force Résistance Max", f"{metrics['max_resistance_force']*1000:.1f} mN")
+                        
+                        # Advanced visualization
+                        st.markdown("#### 📈 Visualisations Cinématiques")
+                        
+                        # Create comprehensive plots
+                        fig_comprehensive = make_subplots(
+                            rows=2, cols=2,
+                            subplot_titles=('🏃 Vitesse vs Temps', '🚀 Accélération vs Temps', 
+                                           '⚡ Puissance vs Temps', '🔋 Énergie Cinétique vs Temps'),
+                            vertical_spacing=0.12
+                        )
+                        
+                        # Velocity plot
+                        fig_comprehensive.add_trace(
+                            go.Scatter(x=metrics['time'], y=metrics['velocity']*1000, 
+                                     mode='lines', name='Vitesse', line=dict(color='blue', width=2)),
+                            row=1, col=1
+                        )
+                        
+                        # Acceleration plot  
+                        fig_comprehensive.add_trace(
+                            go.Scatter(x=metrics['time'], y=metrics['acceleration']*1000,
+                                     mode='lines', name='Accélération', line=dict(color='red', width=2)),
+                            row=1, col=2
+                        )
+                        
+                        # Power plot
+                        fig_comprehensive.add_trace(
+                            go.Scatter(x=metrics['time'], y=metrics['power']*1000,
+                                     mode='lines', name='Puissance', line=dict(color='green', width=2)),
+                            row=2, col=1
+                        )
+                        
+                        # Energy plot
+                        fig_comprehensive.add_trace(
+                            go.Scatter(x=metrics['time'], y=metrics['energy_kinetic']*1000,
+                                     mode='lines', name='Énergie', line=dict(color='purple', width=2)),
+                            row=2, col=2
+                        )
+                        
+                        # Update axes labels
+                        fig_comprehensive.update_xaxes(title_text="Temps (s)")
+                        fig_comprehensive.update_yaxes(title_text="Vitesse (mm/s)", row=1, col=1)
+                        fig_comprehensive.update_yaxes(title_text="Accélération (mm/s²)", row=1, col=2)
+                        fig_comprehensive.update_yaxes(title_text="Puissance (mW)", row=2, col=1)
+                        fig_comprehensive.update_yaxes(title_text="Énergie (mJ)", row=2, col=2)
+                        
+                        fig_comprehensive.update_layout(height=600, showlegend=False)
+                        st.plotly_chart(fig_comprehensive, use_container_width=True)
+                        
+                        # Physical interpretation
+                        st.markdown("#### 🧠 Interprétation Physique")
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.markdown("**🎯 Qualité de l'Expérience:**")
+                            if metrics['trajectory_efficiency'] > 90:
+                                st.success("✅ Trajectoire très droite - Excellente qualité")
+                            elif metrics['trajectory_efficiency'] > 80:
+                                st.success("✅ Trajectoire droite - Bonne qualité")
+                            elif metrics['trajectory_efficiency'] > 70:
+                                st.warning("⚠️ Trajectoire légèrement déviée")
+                            else:
+                                st.error("❌ Trajectoire très déviée - Vérifier le setup")
+                            
+                            if metrics['energy_efficiency'] > 70:
+                                st.success("✅ Bonne conservation d'énergie")
+                            elif metrics['energy_efficiency'] > 50:
+                                st.warning("⚠️ Perte d'énergie modérée")
+                            else:
+                                st.error("❌ Perte d'énergie importante")
+                        
+                        with col2:
+                            st.markdown("**📚 Comparaison Littérature:**")
+                            if metrics['krr'] is not None:
+                                if 0.03 <= metrics['krr'] <= 0.10:
+                                    st.success("✅ Krr cohérent avec Van Wal (2017)")
+                                elif metrics['krr'] < 0:
+                                    st.error("⚠️ Krr négatif - sphère accélère!")
+                                elif metrics['krr'] > 0.15:
+                                    st.warning("⚠️ Krr très élevé - vérifier conditions")
+                                else:
+                                    st.info("💡 Krr en dehors de la gamme littérature")
+                                
+                                st.metric("Référence Van Wal", "0.05-0.07", f"{(metrics['krr']-0.06)/0.06*100:+.1f}%")
+                        
+                        # Export detailed data
+                        st.markdown("#### 💾 Exporter les Données")
+                        
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            # Basic results
+                            basic_results = pd.DataFrame({
+                                'Parametre': ['Krr', 'Vitesse_Max_mm/s', 'Distance_mm', 'Duree_s', 'Efficacite_Energie_%'],
+                                'Valeur': [
+                                    metrics['krr'],
+                                    metrics['max_velocity']*1000,
+                                    metrics['distance']*1000,
+                                    metrics['duration'],
+                                    metrics['energy_efficiency']
+                                ]
+                            })
+                            
+                            csv_basic = basic_results.to_csv(index=False)
+                            st.download_button(
+                                label="📋 Résultats Principaux (CSV)",
+                                data=csv_basic,
+                                file_name="resultats_principaux.csv",
+                                mime="text/csv"
+                            )
+                        
+                        with col2:
+                            # Detailed time series
+                            detailed_data = pd.DataFrame({
+                                'temps_s': metrics['time'],
+                                'vitesse_mm_s': metrics['velocity']*1000,
+                                'acceleration_mm_s2': metrics['acceleration']*1000,
+                                'force_resistance_mN': metrics['resistance_force']*1000,
+                                'puissance_mW': metrics['power']*1000,
+                                'energie_cinetique_mJ': metrics['energy_kinetic']*1000
+                            })
+                            
+                            csv_detailed = detailed_data.to_csv(index=False)
+                            st.download_button(
+                                label="📈 Données Temporelles (CSV)",
+                                data=csv_detailed,
+                                file_name="donnees_temporelles.csv",
+                                mime="text/csv"
+                            )
+                        
+                        with col3:
+                            # Raw trajectory data
+                            trajectory_data = df_valid.copy()
+                            trajectory_data['temps_s'] = np.arange(len(trajectory_data)) / fps_adv
+                            
+                            csv_trajectory = trajectory_data.to_csv(index=False)
+                            st.download_button(
+                                label="🛤️ Données Trajectoire (CSV)",
+                                data=csv_trajectory,
+                                file_name="donnees_trajectoire.csv",
+                                mime="text/csv"
+                            )
+                        
+                    else:
+                        st.error("❌ Impossible de calculer Krr - données insuffisantes ou problème dans les calculs")
+                        st.info("💡 Vérifiez que :")
+                        st.info("• Vous avez au moins 10 détections valides")
+                        st.info("• La sphère se déplace effectivement")
+                        st.info("• Les paramètres physiques sont corrects")
+            
+            else:
+                st.error("❌ Aucune donnée valide pour l'analyse avancée")
+        
+        # === DATA OVERVIEW ===
+        else:  # Data overview
+            st.markdown("""
+            <div class="analysis-card">
+                <h2>📋 Vue d'ensemble de vos données</h2>
+                <p>Exploration et validation de la qualité des données</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Display first rows
+            st.markdown("### 📊 Aperçu des Données")
+            st.dataframe(df.head(10))
+            
+            # Descriptive statistics
+            st.markdown("### 📈 Statistiques Descriptives")
+            st.dataframe(df_valid.describe())
+            
+            # Distribution plots
+            if len(df_valid) > 0:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig1 = px.histogram(df_valid, x='Radius', title="Distribution des Rayons")
+                    st.plotly_chart(fig1, use_container_width=True)
+                    
+                with col2:
+                    detection_status = df['X_center'] != 0
+                    fig2 = px.pie(values=[detection_status.sum(), (~detection_status).sum()],
+                                 names=['Détecté', 'Non détecté'],
+                                 title="Répartition des Détections")
+                    st.plotly_chart(fig2, use_container_width=True)
+
     else:
         # Message if no data is loaded
         st.markdown("""
         ## 🚀 Pour commencer:
         
         1. **📂 Téléchargez votre fichier CSV** avec vos données expérimentales
-        2. **Ou cliquez sur "Utiliser des données d'exemple"** pour explorer les fonctionnalités
+        2. **Ou cliquez sur "Générer des données d'exemple"** pour explorer les fonctionnalités
+        3. **🔧 Choisissez l'analyse** qui vous intéresse dans le menu
         
         ### 📋 Format de fichier attendu:
         Votre CSV doit contenir les colonnes suivantes:
@@ -1149,6 +1190,11 @@ if page == "🏠 Analyse Unique":
         - `X_center`: Position X du centre de la sphère
         - `Y_center`: Position Y du centre de la sphère  
         - `Radius`: Rayon détecté de la sphère
+        
+        ### 🔧 Les 3 Analyses Détaillées Disponibles:
+        - **Code 1**: Visualisation de trajectoire et qualité de détection
+        - **Code 2**: Analyse Krr (coefficient de résistance) avec comparaison littérature
+        - **Code 3**: Analyse complète et avancée avec métriques physiques
         """)
 
 # ==================== MULTI-EXPERIMENT COMPARISON PAGE ====================
@@ -1208,6 +1254,7 @@ elif page == "🔍 Comparaison Multi-Expériences":
         if len(selected_experiments) >= 2:
             # Calculate comparison metrics
             comparison_data = []
+            trajectory_data = []
             
             for exp_name in selected_experiments:
                 exp = st.session_state.experiments[exp_name]
@@ -1216,125 +1263,526 @@ elif page == "🔍 Comparaison Multi-Expériences":
                 df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
                 
                 # Calculate advanced metrics
-                metrics = calculate_advanced_metrics(df_valid)
+                advanced_results = calculate_advanced_metrics(df_valid)
                 
                 comparison_data.append({
                     'Expérience': exp_name,
-                    'Teneur_Eau': meta['water_content'],
-                    'Type_Sphere': meta['sphere_type'],
-                    'Taux_Succes': meta['success_rate'],
-                    'Krr': metrics['krr'] if metrics else None,
-                    'Vitesse_Max': metrics['max_velocity'] if metrics else None,
-                    'Efficacite_Energie': metrics['energy_efficiency'] if metrics else None,
-                    'Efficacite_Trajectoire': metrics['trajectory_efficiency'] if metrics else None,
+                    'Water_Content': meta['water_content'],
+                    'Sphere_Type': meta['sphere_type'],
+                    'Success_Rate': meta['success_rate'],
+                    
+                    # Basic metrics
+                    'Krr': advanced_results['krr'] if advanced_results else None,
+                    'Initial_Velocity': advanced_results['v0'] if advanced_results else None,
+                    'Final_Velocity': advanced_results['vf'] if advanced_results else None,
+                    'Distance': advanced_results['distance'] if advanced_results else None,
+                    
+                    # Advanced kinematic metrics
+                    'Max_Velocity': advanced_results['max_velocity'] if advanced_results else None,
+                    'Max_Acceleration': advanced_results['max_acceleration'] if advanced_results else None,
+                    'Initial_Acceleration': advanced_results['initial_acceleration'] if advanced_results else None,
+                    
+                    # Force and energy metrics
+                    'Max_Resistance_Force': advanced_results['max_resistance_force'] if advanced_results else None,
+                    'Avg_Resistance_Force': advanced_results['avg_resistance_force'] if advanced_results else None,
+                    'Max_Power': advanced_results['max_power'] if advanced_results else None,
+                    'Energy_Dissipated': advanced_results['energy_dissipated'] if advanced_results else None,
+                    'Energy_Efficiency': advanced_results['energy_efficiency'] if advanced_results else None,
+                    
+                    # Quality metrics
+                    'Trajectory_Efficiency': advanced_results['trajectory_efficiency'] if advanced_results else None,
+                    'Vertical_Variation': advanced_results['vertical_variation'] if advanced_results else None,
+                    
+                    # Time series for plotting
+                    'time_series': advanced_results if advanced_results else None
                 })
+                
+                # Trajectory data for overlay
+                if len(df_valid) > 0:
+                    df_traj = df_valid.copy()
+                    df_traj['Experiment'] = exp_name
+                    df_traj['Water_Content'] = meta['water_content']
+                    trajectory_data.append(df_traj)
             
             comp_df = pd.DataFrame(comparison_data)
             
-            # Visualizations
-            st.markdown("### 📊 Analyses Comparatives")
+            # ===== ADVANCED COMPARISON VISUALIZATIONS =====
+            st.markdown("### 📊 Analyse Comparative Avancée")
             
-            col1, col2 = st.columns(2)
+            # Create tabs for different types of analysis
+            tab1, tab2, tab3, tab4 = st.tabs(["🏃 Analyse Cinématique", "⚡ Force & Énergie", "🛤️ Qualité Trajectoire", "📈 Séries Temporelles"])
             
-            with col1:
-                # Krr vs Water Content
-                if comp_df['Krr'].notna().any():
-                    fig_krr = px.scatter(comp_df, x='Teneur_Eau', y='Krr', 
-                                       color='Type_Sphere', size='Taux_Succes',
-                                       hover_data=['Expérience'],
-                                       title="🔍 Krr vs Teneur en Eau",
-                                       labels={'Teneur_Eau': 'Teneur en Eau (%)', 
-                                              'Krr': 'Coefficient Krr'})
-                    st.plotly_chart(fig_krr, use_container_width=True)
-                else:
-                    st.warning("Pas de données Krr valides pour comparaison")
-            
-            with col2:
-                # Success rate comparison
-                fig_success = px.bar(comp_df, x='Expérience', y='Taux_Succes',
-                                   color='Teneur_Eau',
-                                   title="📈 Comparaison des Taux de Succès de Détection",
-                                   labels={'Taux_Succes': 'Taux de Succès (%)'})
-                fig_success.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_success, use_container_width=True)
-            
-            # Energy efficiency comparison
-            if comp_df['Efficacite_Energie'].notna().any():
+            with tab1:
+                st.markdown("#### 🏃 Comparaison Cinématique")
+                
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    fig_energy = px.bar(comp_df, x='Expérience', y='Efficacite_Energie',
-                                      color='Teneur_Eau',
-                                      title="⚡ Efficacité Énergétique",
-                                      labels={'Efficacite_Energie': 'Efficacité Énergétique (%)'})
-                    fig_energy.update_xaxes(tickangle=45)
-                    st.plotly_chart(fig_energy, use_container_width=True)
+                    # Acceleration comparison
+                    if comp_df['Max_Acceleration'].notna().any():
+                        fig_accel = px.scatter(comp_df, x='Water_Content', y='Max_Acceleration', 
+                                             color='Sphere_Type', size='Success_Rate',
+                                             hover_data=['Expérience'],
+                                             title="🚀 Accélération Maximale vs Teneur en Eau",
+                                             labels={'Max_Acceleration': 'Accélération Max (m/s²)', 
+                                                    'Water_Content': 'Teneur en Eau (%)'})
+                        st.plotly_chart(fig_accel, use_container_width=True)
                 
                 with col2:
-                    fig_traj = px.bar(comp_df, x='Expérience', y='Efficacite_Trajectoire',
-                                    color='Teneur_Eau',
-                                    title="🛤️ Efficacité de Trajectoire",
-                                    labels={'Efficacite_Trajectoire': 'Efficacité Trajectoire (%)'})
-                    fig_traj.update_xaxes(tickangle=45)
-                    st.plotly_chart(fig_traj, use_container_width=True)
-            
-            # Statistical comparison table
-            st.markdown("### 📋 Tableau de Comparaison Détaillé")
-            
-            # Format the comparison table
-            display_comp = comp_df.copy()
-            if 'Krr' in display_comp.columns:
-                display_comp['Krr'] = display_comp['Krr'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else "N/A")
-            
-            st.dataframe(display_comp, use_container_width=True)
-            
-            # Key insights
-            st.markdown("### 🔍 Insights Clés")
-            
-            if len(comp_df) >= 2:
-                col1, col2, col3 = st.columns(3)
+                    # Velocity comparison enhanced
+                    if comp_df['Max_Velocity'].notna().any():
+                        fig_vel_max = px.bar(comp_df, x='Expérience', y='Max_Velocity',
+                                           color='Water_Content',
+                                           title="🏃 Comparaison Vitesse Maximale",
+                                           labels={'Max_Velocity': 'Vitesse Max (m/s)'})
+                        fig_vel_max.update_xaxes(tickangle=45)
+                        st.plotly_chart(fig_vel_max, use_container_width=True)
+                
+                # Krr vs Water Content trend
+                col1, col2 = st.columns(2)
                 
                 with col1:
-                    best_exp = comp_df.loc[comp_df['Taux_Succes'].idxmax()]
-                    st.markdown(f"""
-                    <div class="comparison-card">
-                        <h4>🏆 Meilleure Détection</h4>
-                        <p><strong>{best_exp['Expérience']}</strong></p>
-                        <p>{best_exp['Taux_Succes']:.1f}% de succès</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    if comp_df['Krr'].notna().any():
+                        fig_krr = px.scatter(comp_df, x='Water_Content', y='Krr', 
+                                           color='Sphere_Type', size='Success_Rate',
+                                           hover_data=['Expérience'],
+                                           title="🔍 Krr vs Teneur en Eau",
+                                           labels={'Krr': 'Coefficient Krr', 
+                                                  'Water_Content': 'Teneur en Eau (%)'})
+                        
+                        # Add trend line if enough points
+                        if len(comp_df[comp_df['Krr'].notna()]) >= 3:
+                            fig_krr.add_trace(go.Scatter(
+                                x=comp_df['Water_Content'], 
+                                y=comp_df['Krr'],
+                                mode='lines',
+                                name='Tendance',
+                                line=dict(dash='dash', color='red')
+                            ))
+                        st.plotly_chart(fig_krr, use_container_width=True)
                 
                 with col2:
-                    if comp_df['Krr'].notna().any():
-                        min_krr_exp = comp_df.loc[comp_df['Krr'].idxmin()]
+                    # Initial vs Final velocity comparison
+                    if comp_df['Initial_Velocity'].notna().any() and comp_df['Final_Velocity'].notna().any():
+                        fig_vel_comp = go.Figure()
+                        
+                        fig_vel_comp.add_trace(go.Scatter(
+                            x=comp_df['Water_Content'],
+                            y=comp_df['Initial_Velocity'] * 1000,  # Convert to mm/s
+                            mode='markers+lines',
+                            name='Vitesse Initiale',
+                            marker=dict(color='blue', size=10)
+                        ))
+                        
+                        fig_vel_comp.add_trace(go.Scatter(
+                            x=comp_df['Water_Content'],
+                            y=comp_df['Final_Velocity'] * 1000,  # Convert to mm/s
+                            mode='markers+lines',
+                            name='Vitesse Finale',
+                            marker=dict(color='red', size=10)
+                        ))
+                        
+                        fig_vel_comp.update_layout(
+                            title="🏃 Comparaison Vitesses Initiale/Finale",
+                            xaxis_title="Teneur en Eau (%)",
+                            yaxis_title="Vitesse (mm/s)"
+                        )
+                        st.plotly_chart(fig_vel_comp, use_container_width=True)
+            
+            with tab2:
+                st.markdown("#### ⚡ Analyse Force & Énergie")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Resistance force comparison
+                    if comp_df['Max_Resistance_Force'].notna().any():
+                        fig_force = px.scatter(comp_df, x='Water_Content', y='Max_Resistance_Force',
+                                             color='Sphere_Type', size='Success_Rate',
+                                             hover_data=['Expérience'],
+                                             title="🔧 Force de Résistance Max vs Teneur en Eau",
+                                             labels={'Max_Resistance_Force': 'Force Résistance Max (N)',
+                                                    'Water_Content': 'Teneur en Eau (%)'})
+                        st.plotly_chart(fig_force, use_container_width=True)
+                
+                with col2:
+                    # Power comparison
+                    if comp_df['Max_Power'].notna().any():
+                        fig_power = px.bar(comp_df, x='Expérience', y='Max_Power',
+                                         color='Water_Content',
+                                         title="⚡ Puissance Maximale Dissipée",
+                                         labels={'Max_Power': 'Puissance Max (W)'})
+                        fig_power.update_xaxes(tickangle=45)
+                        st.plotly_chart(fig_power, use_container_width=True)
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Energy dissipated
+                    if comp_df['Energy_Dissipated'].notna().any():
+                        fig_energy = px.scatter(comp_df, x='Water_Content', y='Energy_Dissipated',
+                                              color='Sphere_Type',
+                                              title="🔋 Énergie Dissipée vs Teneur en Eau",
+                                              labels={'Energy_Dissipated': 'Énergie Dissipée (J)',
+                                                     'Water_Content': 'Teneur en Eau (%)'})
+                        st.plotly_chart(fig_energy, use_container_width=True)
+                
+                with col2:
+                    # Energy efficiency
+                    if comp_df['Energy_Efficiency'].notna().any():
+                        fig_efficiency = px.bar(comp_df, x='Expérience', y='Energy_Efficiency',
+                                              color='Water_Content',
+                                              title="🎯 Efficacité Énergétique",
+                                              labels={'Energy_Efficiency': 'Efficacité Énergétique (%)'})
+                        fig_efficiency.update_xaxes(tickangle=45)
+                        st.plotly_chart(fig_efficiency, use_container_width=True)
+            
+            with tab3:
+                st.markdown("#### 🛤️ Analyse Qualité Trajectoire")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Trajectory efficiency
+                    if comp_df['Trajectory_Efficiency'].notna().any():
+                        fig_traj_eff = px.bar(comp_df, x='Expérience', y='Trajectory_Efficiency',
+                                            color='Water_Content',
+                                            title="📐 Efficacité de Trajectoire (Rectitude)",
+                                            labels={'Trajectory_Efficiency': 'Efficacité Trajectoire (%)'})
+                        fig_traj_eff.update_xaxes(tickangle=45)
+                        st.plotly_chart(fig_traj_eff, use_container_width=True)
+                
+                with col2:
+                    # Vertical variation
+                    if comp_df['Vertical_Variation'].notna().any():
+                        fig_vert_var = px.scatter(comp_df, x='Water_Content', y='Vertical_Variation',
+                                                color='Sphere_Type',
+                                                title="📏 Variation Verticale du Chemin",
+                                                labels={'Vertical_Variation': 'Variation Verticale (mm)',
+                                                       'Water_Content': 'Teneur en Eau (%)'})
+                        st.plotly_chart(fig_vert_var, use_container_width=True)
+                
+                # Combined trajectory overlay (enhanced)
+                if trajectory_data:
+                    st.markdown("##### 🎯 Comparaison de Trajectoires Améliorée")
+                    
+                    combined_traj = pd.concat(trajectory_data, ignore_index=True)
+                    
+                    # Create trajectory plot with quality metrics
+                    fig_traj_enhanced = px.scatter(combined_traj, x='X_center', y='Y_center',
+                                                 color='Experiment', 
+                                                 animation_frame='Frame',
+                                                 title="🛤️ Comparaison Trajectoires avec Métriques Qualité",
+                                                 opacity=0.7)
+                    fig_traj_enhanced.update_yaxes(autorange="reversed")
+                    fig_traj_enhanced.update_layout(height=600)
+                    st.plotly_chart(fig_traj_enhanced, use_container_width=True)
+            
+            with tab4:
+                st.markdown("#### 📈 Comparaison Séries Temporelles")
+                
+                # Create time series plots for selected experiments
+                if len(selected_experiments) <= 5:  # Limit to avoid cluttered plots
+                    
+                    # Velocity profiles
+                    st.markdown("##### 🏃 Profils de Vitesse")
+                    fig_vel_series = go.Figure()
+                    
+                    for exp_name in selected_experiments:
+                        exp_data = next((item for item in comparison_data if item['Expérience'] == exp_name), None)
+                        if exp_data and exp_data['time_series']:
+                            ts = exp_data['time_series']
+                            fig_vel_series.add_trace(go.Scatter(
+                                x=ts['time'], 
+                                y=ts['velocity'] * 1000,  # Convert to mm/s
+                                mode='lines',
+                                name=f"{exp_name} ({exp_data['Water_Content']}% eau)",
+                                line=dict(width=2)
+                            ))
+                    
+                    fig_vel_series.update_layout(
+                        title="Vitesse vs Temps - Toutes Expériences",
+                        xaxis_title="Temps (s)",
+                        yaxis_title="Vitesse (mm/s)",
+                        height=400
+                    )
+                    st.plotly_chart(fig_vel_series, use_container_width=True)
+                    
+                    # Acceleration profiles
+                    st.markdown("##### 🚀 Profils d'Accélération")
+                    fig_accel_series = go.Figure()
+                    
+                    for exp_name in selected_experiments:
+                        exp_data = next((item for item in comparison_data if item['Expérience'] == exp_name), None)
+                        if exp_data and exp_data['time_series']:
+                            ts = exp_data['time_series']
+                            fig_accel_series.add_trace(go.Scatter(
+                                x=ts['time'], 
+                                y=ts['acceleration'] * 1000,  # Convert to mm/s²
+                                mode='lines',
+                                name=f"{exp_name} ({exp_data['Water_Content']}% eau)",
+                                line=dict(width=2)
+                            ))
+                    
+                    fig_accel_series.update_layout(
+                        title="Accélération vs Temps - Toutes Expériences",
+                        xaxis_title="Temps (s)",
+                        yaxis_title="Accélération (mm/s²)",
+                        height=400
+                    )
+                    st.plotly_chart(fig_accel_series, use_container_width=True)
+                    
+                    # Power profiles
+                    st.markdown("##### ⚡ Profils de Dissipation de Puissance")
+                    fig_power_series = go.Figure()
+                    
+                    for exp_name in selected_experiments:
+                        exp_data = next((item for item in comparison_data if item['Expérience'] == exp_name), None)
+                        if exp_data and exp_data['time_series']:
+                            ts = exp_data['time_series']
+                            fig_power_series.add_trace(go.Scatter(
+                                x=ts['time'], 
+                                y=ts['power'] * 1000,  # Convert to mW
+                                mode='lines',
+                                name=f"{exp_name} ({exp_data['Water_Content']}% eau)",
+                                line=dict(width=2)
+                            ))
+                    
+                    fig_power_series.update_layout(
+                        title="Dissipation de Puissance vs Temps - Toutes Expériences",
+                        xaxis_title="Temps (s)",
+                        yaxis_title="Puissance (mW)",
+                        height=400
+                    )
+                    st.plotly_chart(fig_power_series, use_container_width=True)
+                    
+                else:
+                    st.warning("⚠️ Trop d'expériences sélectionnées pour la comparaison des séries temporelles. Veuillez sélectionner 5 expériences ou moins.")
+            
+            # Enhanced statistical comparison table
+            st.markdown("### 📋 Tableau de Comparaison Détaillé")
+            
+            # Format the comparison table with all new metrics
+            display_comp = comp_df.copy()
+            
+            # Format numeric columns
+            numeric_columns = {
+                'Krr': lambda x: f"{x:.6f}" if pd.notna(x) else "N/A",
+                'Initial_Velocity': lambda x: f"{x*1000:.2f}" if pd.notna(x) else "N/A",
+                'Final_Velocity': lambda x: f"{x*1000:.2f}" if pd.notna(x) else "N/A",
+                'Max_Velocity': lambda x: f"{x*1000:.2f}" if pd.notna(x) else "N/A",
+                'Distance': lambda x: f"{x*1000:.2f}" if pd.notna(x) else "N/A",
+                'Max_Acceleration': lambda x: f"{x*1000:.2f}" if pd.notna(x) else "N/A",
+                'Max_Resistance_Force': lambda x: f"{x*1000:.2f}" if pd.notna(x) else "N/A",
+                'Energy_Dissipated': lambda x: f"{x*1000:.2f}" if pd.notna(x) else "N/A",
+                'Energy_Efficiency': lambda x: f"{x:.1f}" if pd.notna(x) else "N/A",
+                'Trajectory_Efficiency': lambda x: f"{x:.1f}" if pd.notna(x) else "N/A"
+            }
+            
+            for col, formatter in numeric_columns.items():
+                if col in display_comp.columns:
+                    new_col_name = col.replace('_', ' ') + (' (mm/s)' if 'Velocity' in col else 
+                                                           ' (mm)' if col == 'Distance' else
+                                                           ' (mm/s²)' if 'Acceleration' in col else
+                                                           ' (mN)' if 'Force' in col else
+                                                           ' (mJ)' if 'Energy_Dissipated' in col else
+                                                           ' (%)' if 'Efficiency' in col else '')
+                    display_comp[new_col_name] = display_comp[col].apply(formatter)
+            
+            # Select relevant columns for display
+            display_columns = ['Expérience', 'Water_Content', 'Sphere_Type', 'Success_Rate', 
+                             'Krr', 'Max Velocity (mm/s)', 'Max Acceleration (mm/s²)', 
+                             'Max Resistance Force (mN)', 'Energy Dissipated (mJ)', 
+                             'Energy Efficiency (%)', 'Trajectory Efficiency (%)']
+            
+            available_columns = [col for col in display_columns if col in display_comp.columns]
+            st.dataframe(display_comp[available_columns], use_container_width=True)
+            
+            # Enhanced key insights
+            st.markdown("### 🔍 Insights Clés Avancés")
+            
+            if len(comp_df) >= 2:
+                # Create insights based on new metrics
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    if comp_df['Krr'].notna().sum() >= 2:
+                        water_sorted = comp_df.sort_values('Water_Content')
+                        krr_change = water_sorted['Krr'].iloc[-1] - water_sorted['Krr'].iloc[0]
+                        water_change = water_sorted['Water_Content'].iloc[-1] - water_sorted['Water_Content'].iloc[0]
+                        
                         st.markdown(f"""
                         <div class="comparison-card">
-                            <h4>⚡ Krr le Plus Bas</h4>
-                            <p><strong>{min_krr_exp['Expérience']}</strong></p>
-                            <p>Krr = {min_krr_exp['Krr']:.6f}</p>
+                            <h4>💧 Effet Teneur en Eau</h4>
+                            <p>Variation Krr: <strong>{krr_change:.6f}</strong></p>
+                            <p>Gamme eau: <strong>{water_change:.1f}%</strong></p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                with col2:
+                    if comp_df['Max_Resistance_Force'].notna().any():
+                        max_force_exp = comp_df.loc[comp_df['Max_Resistance_Force'].idxmax()]
+                        st.markdown(f"""
+                        <div class="comparison-card">
+                            <h4>🔧 Résistance Maximale</h4>
+                            <p><strong>{max_force_exp['Expérience']}</strong></p>
+                            <p>{max_force_exp['Max_Resistance_Force']*1000:.1f} mN</p>
                         </div>
                         """, unsafe_allow_html=True)
                 
                 with col3:
-                    water_range = comp_df['Teneur_Eau'].max() - comp_df['Teneur_Eau'].min()
-                    st.markdown(f"""
-                    <div class="comparison-card">
-                        <h4>💧 Gamme d'Eau Testée</h4>
-                        <p><strong>{water_range:.1f}%</strong></p>
-                        <p>De {comp_df['Teneur_Eau'].min()}% à {comp_df['Teneur_Eau'].max()}%</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    if comp_df['Energy_Efficiency'].notna().any():
+                        best_efficiency_exp = comp_df.loc[comp_df['Energy_Efficiency'].idxmax()]
+                        st.markdown(f"""
+                        <div class="comparison-card">
+                            <h4>⚡ Meilleure Efficacité Énergétique</h4>
+                            <p><strong>{best_efficiency_exp['Expérience']}</strong></p>
+                            <p>{best_efficiency_exp['Energy_Efficiency']:.1f}% conservée</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                with col4:
+                    if comp_df['Trajectory_Efficiency'].notna().any():
+                        best_trajectory_exp = comp_df.loc[comp_df['Trajectory_Efficiency'].idxmax()]
+                        st.markdown(f"""
+                        <div class="comparison-card">
+                            <h4>🛤️ Trajectoire la Plus Droite</h4>
+                            <p><strong>{best_trajectory_exp['Expérience']}</strong></p>
+                            <p>{best_trajectory_exp['Trajectory_Efficiency']:.1f}% efficacité</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Correlation analysis
+                st.markdown("#### 🔗 Analyse de Corrélation Avancée")
+                
+                # Select numeric columns for correlation
+                correlation_columns = ['Water_Content', 'Krr', 'Max_Acceleration', 'Max_Resistance_Force', 
+                                     'Energy_Dissipated', 'Energy_Efficiency', 'Trajectory_Efficiency']
+                
+                available_corr_columns = [col for col in correlation_columns if col in comp_df.columns and comp_df[col].notna().any()]
+                
+                if len(available_corr_columns) >= 3:
+                    corr_matrix = comp_df[available_corr_columns].corr()
+                    
+                    fig_corr = px.imshow(
+                        corr_matrix, 
+                        text_auto=True, 
+                        aspect="auto",
+                        title="📊 Matrice de Corrélation - Tous Paramètres",
+                        color_continuous_scale="RdBu_r"
+                    )
+                    fig_corr.update_layout(height=500)
+                    st.plotly_chart(fig_corr, use_container_width=True)
+                    
+                    # Key correlations insights
+                    st.markdown("##### 🎯 Corrélations Clés Trouvées:")
+                    
+                    # Find strongest correlations (excluding self-correlations)
+                    mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
+                    corr_values = corr_matrix.where(mask).stack().reset_index()
+                    corr_values.columns = ['Var1', 'Var2', 'Correlation']
+                    corr_values = corr_values.sort_values('Correlation', key=abs, ascending=False)
+                    
+                    for i, row in corr_values.head(3).iterrows():
+                        correlation_strength = "Forte" if abs(row['Correlation']) > 0.7 else "Modérée" if abs(row['Correlation']) > 0.5 else "Faible"
+                        correlation_direction = "positive" if row['Correlation'] > 0 else "négative"
+                        
+                        st.markdown(f"- **Corrélation {correlation_strength} {correlation_direction}** entre {row['Var1']} et {row['Var2']} (r = {row['Correlation']:.3f})")
+                
+                # Physical insights section
+                st.markdown("#### 🧠 Insights Physiques")
+                
+                insights = []
+                
+                # Water content effect on Krr
+                if 'Water_Content' in comp_df.columns and 'Krr' in comp_df.columns:
+                    water_krr_corr = comp_df[['Water_Content', 'Krr']].corr().iloc[0, 1]
+                    if not pd.isna(water_krr_corr):
+                        if water_krr_corr > 0.3:
+                            insights.append("💧 **L'humidité augmente la résistance au roulement** - le substrat humide crée plus de traînée")
+                        elif water_krr_corr < -0.3:
+                            insights.append("💧 **L'humidité diminue la résistance au roulement** - possible effet de lubrification")
+                        else:
+                            insights.append("💧 **L'humidité a un effet minimal** sur la résistance au roulement dans cette gamme")
+                
+                # Force vs acceleration relationship
+                if 'Max_Acceleration' in comp_df.columns and 'Max_Resistance_Force' in comp_df.columns:
+                    force_accel_corr = comp_df[['Max_Acceleration', 'Max_Resistance_Force']].corr().iloc[0, 1]
+                    if not pd.isna(force_accel_corr) and force_accel_corr > 0.7:
+                        insights.append("🔧 **Couplage force-accélération fort** - Deuxième loi de Newton bien vérifiée")
+                
+                # Energy efficiency insights
+                if 'Energy_Efficiency' in comp_df.columns and 'Water_Content' in comp_df.columns:
+                    energy_water_corr = comp_df[['Energy_Efficiency', 'Water_Content']].corr().iloc[0, 1]
+                    if not pd.isna(energy_water_corr):
+                        if energy_water_corr < -0.3:
+                            insights.append("⚡ **Perte d'énergie augmente avec l'humidité** - plus de processus dissipatifs")
+                        elif energy_water_corr > 0.3:
+                            insights.append("⚡ **Efficacité énergétique s'améliore avec l'humidité** - lubrification inattendue?")
+                
+                # Trajectory quality insights
+                if 'Trajectory_Efficiency' in comp_df.columns and 'Water_Content' in comp_df.columns:
+                    traj_water_corr = comp_df[['Trajectory_Efficiency', 'Water_Content']].corr().iloc[0, 1]
+                    if not pd.isna(traj_water_corr):
+                        if traj_water_corr < -0.3:
+                            insights.append("🛤️ **Le chemin devient moins droit avec l'humidité** - résistance latérale accrue")
+                        elif traj_water_corr > 0.3:
+                            insights.append("🛤️ **Le chemin devient plus droit avec l'humidité** - déflexion latérale réduite")
+                
+                if insights:
+                    for insight in insights:
+                        st.markdown(insight)
+                else:
+                    st.markdown("📊 *Plus d'expériences nécessaires pour des insights physiques robustes*")
             
-            # Export comparison results
-            st.markdown("### 💾 Exporter les Résultats de Comparaison")
+            # Export enhanced comparison results
+            st.markdown("### 💾 Exporter les Résultats Améliorés")
             
-            csv_comparison = comp_df.to_csv(index=False)
-            st.download_button(
-                label="📥 Télécharger les résultats de comparaison (CSV)",
-                data=csv_comparison,
-                file_name="comparaison_experiences.csv",
-                mime="text/csv"
-            )
+            # Create comprehensive export data
+            export_data = comp_df.copy()
+            
+            # Add summary statistics
+            summary_stats = {}
+            numeric_cols = export_data.select_dtypes(include=[np.number]).columns
+            for col in numeric_cols:
+                if export_data[col].notna().any():
+                    summary_stats[f"{col}_mean"] = export_data[col].mean()
+                    summary_stats[f"{col}_std"] = export_data[col].std()
+                    summary_stats[f"{col}_min"] = export_data[col].min()
+                    summary_stats[f"{col}_max"] = export_data[col].max()
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                csv_comparison = export_data.to_csv(index=False)
+                st.download_button(
+                    label="📥 Télécharger données de comparaison (CSV)",
+                    data=csv_comparison,
+                    file_name="comparaison_experiences_avancee.csv",
+                    mime="text/csv"
+                )
+            
+            with col2:
+                # Export summary statistics
+                summary_df = pd.DataFrame([summary_stats])
+                csv_summary = summary_df.to_csv(index=False)
+                st.download_button(
+                    label="📊 Télécharger statistiques résumé (CSV)",
+                    data=csv_summary,
+                    file_name="statistiques_resume_experiences.csv",
+                    mime="text/csv"
+                )
+            
+            with col3:
+                # Export correlation matrix
+                if len(available_corr_columns) >= 3:
+                    csv_correlation = corr_matrix.to_csv()
+                    st.download_button(
+                        label="🔗 Télécharger matrice corrélation (CSV)",
+                        data=csv_correlation,
+                        file_name="matrice_correlation.csv",
+                        mime="text/csv"
+                    )
         
         else:
             st.info("Veuillez sélectionner au moins 2 expériences pour la comparaison")
@@ -1511,6 +1959,92 @@ elif page == "🎯 Module de Prédiction":
                         else:
                             a, b = model['coeffs']
                             st.caption(f"📐 Équation: {param_name} = {a:.6f}×W + {b:.6f}")
+            
+            # Prediction visualization
+            st.markdown("### 📈 Visualisation des Prédictions")
+            
+            # Create prediction plots
+            fig_predictions = make_subplots(
+                rows=1, cols=len(models),
+                subplot_titles=[param.replace('_', ' ').title() for param in models.keys()],
+                horizontal_spacing=0.1
+            )
+            
+            # Water content range for smooth curves
+            water_range = np.linspace(0, 30, 100)
+            
+            for i, (param, model) in enumerate(models.items()):
+                # Predict for the range
+                predictions_range = [np.polyval(model['coeffs'], w) for w in water_range]
+                
+                # Add prediction curve
+                fig_predictions.add_trace(
+                    go.Scatter(x=water_range, y=predictions_range,
+                             mode='lines', name=f'{param} prédiction',
+                             line=dict(color='blue', width=2)),
+                    row=1, col=i+1
+                )
+                
+                # Add data points from experiments
+                exp_water = []
+                exp_values = []
+                for exp_name, exp in st.session_state.experiments.items():
+                    df = exp['data']
+                    meta = exp['metadata']
+                    df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+                    
+                    metrics = calculate_advanced_metrics(df_valid)
+                    if metrics and param in metrics and metrics[param] is not None:
+                        exp_water.append(meta['water_content'])
+                        exp_values.append(metrics[param])
+                
+                if exp_water:
+                    fig_predictions.add_trace(
+                        go.Scatter(x=exp_water, y=exp_values,
+                                 mode='markers', name=f'{param} données',
+                                 marker=dict(color='red', size=8)),
+                        row=1, col=i+1
+                    )
+                
+                # Add current prediction point
+                current_pred = predictions[param]['value']
+                fig_predictions.add_trace(
+                    go.Scatter(x=[pred_water], y=[current_pred],
+                             mode='markers', name=f'{param} prédiction actuelle',
+                             marker=dict(color='green', size=12, symbol='star')),
+                    row=1, col=i+1
+                )
+                
+                # Add confidence bands
+                ci_lower_range = [predictions[param]['ci_lower']] * len(water_range)
+                ci_upper_range = [predictions[param]['ci_upper']] * len(water_range)
+                
+                fig_predictions.add_trace(
+                    go.Scatter(x=water_range, y=ci_upper_range,
+                             mode='lines', line=dict(color='lightblue', dash='dash'),
+                             name=f'{param} IC sup', showlegend=False),
+                    row=1, col=i+1
+                )
+                
+                fig_predictions.add_trace(
+                    go.Scatter(x=water_range, y=ci_lower_range,
+                             mode='lines', line=dict(color='lightblue', dash='dash'),
+                             fill='tonexty', fillcolor='rgba(173,216,230,0.3)',
+                             name=f'{param} IC inf', showlegend=False),
+                    row=1, col=i+1
+                )
+            
+            fig_predictions.update_layout(height=400, showlegend=False)
+            fig_predictions.update_xaxes(title_text="Teneur en Eau (%)")
+            st.plotly_chart(fig_predictions, use_container_width=True)
+            
+            # Engineering recommendations
+            st.markdown("### 🔧 Recommandations d'Ingénierie")
+            
+            recommendations = generate_engineering_recommendations(st.session_state.experiments, models)
+            
+            for rec in recommendations:
+                st.markdown(rec)
 
 # ==================== AUTO-GENERATED REPORT PAGE ====================
 elif page == "📊 Rapport Auto-Généré":
@@ -1540,9 +2074,32 @@ elif page == "📊 Rapport Auto-Généré":
             st.rerun()
     
     else:
-        # Generate report
+        # Generate comprehensive report
         with st.spinner("🔄 Génération du rapport d'analyse complet..."):
-            report_content = generate_auto_report(st.session_state.experiments)
+            
+            # Calculate comprehensive statistics
+            total_experiments = len(st.session_state.experiments)
+            water_contents = [exp['metadata']['water_content'] for exp in st.session_state.experiments.values()]
+            success_rates = [exp['metadata']['success_rate'] for exp in st.session_state.experiments.values()]
+            
+            # Calculate advanced metrics for all experiments
+            all_metrics = []
+            for exp_name, exp in st.session_state.experiments.items():
+                df = exp['data']
+                meta = exp['metadata']
+                df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+                
+                metrics = calculate_advanced_metrics(df_valid)
+                if metrics:
+                    all_metrics.append({
+                        'exp_name': exp_name,
+                        'water_content': meta['water_content'],
+                        'sphere_type': meta['sphere_type'],
+                        **metrics
+                    })
+            
+            # Build models for report
+            models = build_prediction_model(st.session_state.experiments)
         
         # Display report
         st.markdown("### 📋 Rapport Généré")
@@ -1551,81 +2108,113 @@ elif page == "📊 Rapport Auto-Généré":
         col1, col2, col3 = st.columns(3)
         
         with col1:
+            current_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            # Generate text report
+            report_content = f"""
+# 📊 RAPPORT D'ANALYSE AUTOMATIQUE
+## Résistance au Roulement des Sphères sur Matériau Granulaire Humide
+
+**Généré le:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+**Nombre d'expériences:** {total_experiments}
+
+## 🎯 RÉSUMÉ EXÉCUTIF
+
+### Principales Découvertes:
+• **Expériences analysées**: {total_experiments}
+• **Gamme d'humidité testée**: {min(water_contents):.1f}% - {max(water_contents):.1f}%
+• **Succès de détection moyen**: {np.mean(success_rates):.1f}%
+
+### Métriques Clés:
+"""
+            
+            if all_metrics:
+                all_krr = [m['krr'] for m in all_metrics if m['krr'] is not None]
+                if all_krr:
+                    report_content += f"• **Gamme coefficient Krr**: {min(all_krr):.6f} - {max(all_krr):.6f}\n"
+                
+                all_efficiency = [m['energy_efficiency'] for m in all_metrics if m['energy_efficiency'] is not None]
+                if all_efficiency:
+                    report_content += f"• **Gamme efficacité énergétique**: {min(all_efficiency):.1f}% - {max(all_efficiency):.1f}%\n"
+            
+            report_content += "\n## 🔧 RECOMMANDATIONS D'INGÉNIERIE\n\n"
+            recommendations = generate_engineering_recommendations(st.session_state.experiments, models)
+            for rec in recommendations:
+                report_content += f"{rec}\n"
+            
+            if models:
+                report_content += "\n## 📈 MODÈLES PRÉDICTIFS\n\n"
+                for param, model in models.items():
+                    param_name = param.replace('_', ' ').title()
+                    report_content += f"### {param_name}\n"
+                    report_content += f"• **Qualité du modèle (R²)**: {model['r2']:.3f}\n"
+                    report_content += f"• **Gamme valide**: {model['data_range'][0]:.1f}% - {model['data_range'][1]:.1f}% teneur en eau\n"
+                    report_content += f"• **Erreur standard**: ±{model['std_error']:.6f}\n\n"
+            
             # Download report as text
             st.download_button(
                 label="📥 Télécharger le rapport (TXT)",
                 data=report_content,
-                file_name=f"rapport_analyse_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                file_name=f"rapport_analyse_{current_time}.txt",
                 mime="text/plain"
             )
         
         with col2:
-            # Generate PDF option (simplified)
-            if st.button("📄 Générer rapport PDF"):
-                st.info("💡 Fonction PDF en développement. Utilisez l'option TXT pour l'instant.")
+            # Generate comprehensive CSV data export
+            if all_metrics:
+                comprehensive_data = []
+                for metric in all_metrics:
+                    comprehensive_data.append({
+                        'Experiment': metric['exp_name'],
+                        'Water_Content_percent': metric['water_content'],
+                        'Sphere_Type': metric['sphere_type'],
+                        'Krr_coefficient': metric['krr'],
+                        'Max_Velocity_mm_s': metric['max_velocity'] * 1000 if metric['max_velocity'] else None,
+                        'Energy_Efficiency_percent': metric['energy_efficiency'],
+                        'Trajectory_Efficiency_percent': metric['trajectory_efficiency'],
+                        'Max_Acceleration_mm_s2': metric['max_acceleration'] * 1000 if metric['max_acceleration'] else None,
+                        'Distance_traveled_mm': metric['distance'] * 1000 if metric['distance'] else None
+                    })
+                
+                comprehensive_df = pd.DataFrame(comprehensive_data)
+                csv_comprehensive = comprehensive_df.to_csv(index=False)
+                
+                st.download_button(
+                    label="📊 Données complètes (CSV)",
+                    data=csv_comprehensive,
+                    file_name=f"donnees_completes_{current_time}.csv",
+                    mime="text/csv"
+                )
         
         with col3:
-            # Email report option
+            # Email report option (placeholder)
             if st.button("📧 Envoyer par email"):
                 st.info("💡 Fonction email en développement. Utilisez l'option de téléchargement.")
         
-        # Display report content
+        # Interactive dashboard
         st.markdown("---")
-        
-        # Report sections with expandable content
-        with st.expander("📊 Voir le Rapport Complet", expanded=True):
-            st.markdown(report_content)
-        
-        # Interactive elements for report customization
-        st.markdown("### 🔧 Personnalisation du Rapport")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### Options d'Inclusion")
-            include_raw_data = st.checkbox("Inclure les données brutes", value=False)
-            include_plots = st.checkbox("Inclure les graphiques", value=True)
-            include_equations = st.checkbox("Inclure les équations détaillées", value=True)
-            
-        with col2:
-            st.markdown("#### Format du Rapport")
-            report_language = st.selectbox("Langue", ["Français", "English"])
-            report_detail = st.selectbox("Niveau de détail", ["Résumé", "Standard", "Détaillé"])
-            
-        if st.button("🔄 Régénérer le Rapport avec Nouvelles Options"):
-            with st.spinner("Régénération du rapport..."):
-                # Here you would implement the custom report generation
-                # For now, we'll just show the same report
-                st.success("✅ Rapport régénéré avec les nouvelles options!")
+        st.markdown("### 📊 Tableau de Bord Interactif")
         
         # Summary statistics
-        st.markdown("### 📈 Statistiques du Rapport")
-        
-        # Calculate some basic stats about the experiments
-        total_experiments = len(st.session_state.experiments)
-        water_contents = [exp['metadata']['water_content'] for exp in st.session_state.experiments.values()]
-        success_rates = [exp['metadata']['success_rate'] for exp in st.session_state.experiments.values()]
-        
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.metric("Expériences Totales", total_experiments)
         
         with col2:
-            st.metric("Gamme d'Humidité", f"{min(water_contents):.1f}%-{max(water_contents):.1f}%")
+            water_range = max(water_contents) - min(water_contents)
+            st.metric("Gamme d'Humidité", f"{water_range:.1f}%")
         
         with col3:
             st.metric("Succès Moyen", f"{np.mean(success_rates):.1f}%")
         
         with col4:
-            models = build_prediction_model(st.session_state.experiments)
             model_count = len(models) if models else 0
             st.metric("Modèles Générés", model_count)
         
         # Quality assessment
         st.markdown("### 🎯 Évaluation de la Qualité")
         
-        # Data quality indicators
         col1, col2 = st.columns(2)
         
         with col1:
@@ -1671,26 +2260,54 @@ elif page == "📊 Rapport Auto-Généré":
             else:
                 st.warning("Aucun modèle disponible")
         
+        # Comprehensive visualization summary
+        st.markdown("### 📈 Résumé Visuel")
+        
+        if all_metrics:
+            # Create summary plots
+            summary_data = pd.DataFrame(all_metrics)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if 'krr' in summary_data.columns and summary_data['krr'].notna().any():
+                    fig_krr_summary = px.scatter(summary_data, x='water_content', y='krr',
+                                               color='sphere_type',
+                                               title="📊 Résumé: Krr vs Teneur en Eau",
+                                               labels={'water_content': 'Teneur en Eau (%)',
+                                                      'krr': 'Coefficient Krr'})
+                    st.plotly_chart(fig_krr_summary, use_container_width=True)
+            
+            with col2:
+                if 'energy_efficiency' in summary_data.columns and summary_data['energy_efficiency'].notna().any():
+                    fig_energy_summary = px.bar(summary_data, x='exp_name', y='energy_efficiency',
+                                               color='water_content',
+                                               title="📊 Résumé: Efficacité Énergétique",
+                                               labels={'exp_name': 'Expérience',
+                                                      'energy_efficiency': 'Efficacité Énergétique (%)'})
+                    fig_energy_summary.update_xaxes(tickangle=45)
+                    st.plotly_chart(fig_energy_summary, use_container_width=True)
+        
         # Recommendations for improvement
         st.markdown("### 💡 Recommandations d'Amélioration")
         
-        recommendations = []
+        improvement_recs = []
         
         if total_experiments < 5:
-            recommendations.append("📊 **Augmenter le nombre d'expériences** - Collecter au moins 5-8 expériences pour des modèles robustes")
+            improvement_recs.append("📊 **Augmenter le nombre d'expériences** - Collecter au moins 5-8 expériences pour des modèles robustes")
         
         if max(water_contents) - min(water_contents) < 15:
-            recommendations.append("💧 **Élargir la gamme d'humidité** - Tester une gamme plus large de teneurs en eau")
+            improvement_recs.append("💧 **Élargir la gamme d'humidité** - Tester une gamme plus large de teneurs en eau")
         
         if avg_success < 75:
-            recommendations.append("🔧 **Améliorer la qualité de détection** - Optimiser les paramètres de détection ou l'éclairage")
+            improvement_recs.append("🔧 **Améliorer la qualité de détection** - Optimiser les paramètres de détection ou l'éclairage")
         
         sphere_types = set([exp['metadata']['sphere_type'] for exp in st.session_state.experiments.values()])
         if len(sphere_types) < 2:
-            recommendations.append("⚪ **Tester différents matériaux** - Inclure plusieurs types de sphères pour la comparaison")
+            improvement_recs.append("⚪ **Tester différents matériaux** - Inclure plusieurs types de sphères pour la comparaison")
         
-        if recommendations:
-            for rec in recommendations:
+        if improvement_recs:
+            for rec in improvement_recs:
                 st.markdown(rec)
         else:
             st.success("✅ Configuration expérimentale excellente! Aucune amélioration majeure nécessaire.")
@@ -1704,6 +2321,7 @@ st.markdown("""
 **Institution**: Department of Cosmic Earth Science, Graduate School of Science, Osaka University  
 **Domaine**: Mécanique granulaire  
 **Innovation**: Première étude de l'effet de l'humidité  
+**Applications**: Ingénierie géotechnique, systèmes de transport, mécanique des sols
 """)
 
 # Sidebar information
@@ -1716,6 +2334,14 @@ st.sidebar.markdown("""
 - **Type de recherche**: Physique expérimentale
 """)
 
+st.sidebar.markdown("""
+### 🎓 Contexte de Recherche
+**Institution**: Université d'Osaka  
+**Domaine**: Mécanique granulaire  
+**Innovation**: Première étude d'humidité  
+**Impact**: Applications d'ingénierie  
+""")
+
 # Quick access to saved experiments
 if st.session_state.experiments:
     st.sidebar.markdown("---")
@@ -1726,6 +2352,7 @@ if st.session_state.experiments:
         **{exp_name}**
         - Eau: {meta['water_content']}%
         - Type: {meta['sphere_type']}
+        - Succès: {meta['success_rate']:.1f}%
         """)
 else:
     st.sidebar.markdown("---")
