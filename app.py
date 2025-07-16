@@ -666,10 +666,17 @@ if page == "🏠 Analyse Unique":
                     # Filter valid detections
                     df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
                     
+                    # Store in session state immediately  
+                    st.session_state['current_df'] = df
+                    st.session_state['current_df_valid'] = df_valid
+                    
                     if len(df_valid) == 0:
                         st.warning("⚠️ Aucune détection valide trouvée! Vérifiez vos données.")
                     else:
                         st.success(f"✅ {len(df_valid)} détections valides prêtes pour l'analyse!")
+                        
+                        # Debug info
+                        st.info(f"🔍 DEBUG: df_valid shape = {df_valid.shape}, min/max values = X:[{df_valid['X_center'].min():.1f}-{df_valid['X_center'].max():.1f}], Y:[{df_valid['Y_center'].min():.1f}-{df_valid['Y_center'].max():.1f}]")
                         
                         # Option to save experiment
                         if st.button("💾 Sauvegarder l'expérience pour comparaison", key="save_uploaded"):
@@ -714,12 +721,19 @@ if page == "🏠 Analyse Unique":
             )
             df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
             
+            # Store in session state immediately
+            st.session_state['current_df'] = df
+            st.session_state['current_df_valid'] = df_valid
+            
             st.success("📊 Données d'exemple générées avec succès!")
             st.info(f"✅ {len(df)} frames générées, {len(df_valid)} détections valides")
             
             # Show sample data preview
             st.markdown("#### 👀 Aperçu des Données d'Exemple")
             st.dataframe(df.head(10))
+            
+            # Debug info
+            st.info(f"🔍 DEBUG: df_valid shape = {df_valid.shape}, data stored in session_state")
     
     with tab3:
         st.markdown("### ✍️ Saisie Manuelle de Données")
@@ -758,7 +772,13 @@ if page == "🏠 Analyse Unique":
                 if st.button("✅ Utiliser ces données", key="use_manual"):
                     df = manual_df
                     df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+                    
+                    # Store in session state immediately
+                    st.session_state['current_df'] = df
+                    st.session_state['current_df_valid'] = df_valid
+                    
                     st.success("Données manuelles chargées pour l'analyse!")
+                    st.info(f"🔍 DEBUG: {len(df_valid)} détections valides stockées")
             
             with col2:
                 if st.button("🗑️ Effacer tout", key="clear_manual"):
@@ -772,10 +792,13 @@ if page == "🏠 Analyse Unique":
         if df_valid is not None and len(df_valid) > 0:
             st.session_state['current_df_valid'] = df_valid
     
-    # Use data from session state if available
+    # Use data from session state if available, with debug info
     if 'current_df' in st.session_state and 'current_df_valid' in st.session_state:
         df = st.session_state['current_df']
         df_valid = st.session_state['current_df_valid']
+        
+        # Debug information
+        st.info(f"🔍 DEBUG: Données chargées depuis session_state - {len(df_valid)} détections valides disponibles")
     
     # Analysis section - ALWAYS show if we have data
     if df is not None and df_valid is not None and len(df_valid) > 0:
@@ -916,8 +939,19 @@ if page == "🏠 Analyse Unique":
         if calculate_krr:
             st.markdown("### 🔬 Analyse Avancée et Calcul Krr")
             
+            # Additional debug info before calculation
+            st.info(f"🔍 DEBUG CALCUL: df_valid shape = {df_valid.shape}, colonnes = {list(df_valid.columns)}")
+            st.info(f"🔍 DEBUG CALCUL: Valeurs non-nulles X={df_valid['X_center'].notna().sum()}, Y={df_valid['Y_center'].notna().sum()}, R={df_valid['Radius'].notna().sum()}")
+            
             with st.spinner("🧮 Calcul des métriques avancées en cours..."):
-                metrics = calculate_advanced_metrics(df_valid, fps, pixels_per_mm, sphere_mass_g, angle_deg)
+                try:
+                    metrics = calculate_advanced_metrics(df_valid, fps, pixels_per_mm, sphere_mass_g, angle_deg)
+                    st.info(f"🔍 DEBUG: Métrics calculées = {metrics is not None}")
+                    if metrics:
+                        st.info(f"🔍 DEBUG: Krr = {metrics.get('krr', 'None')}")
+                except Exception as e:
+                    st.error(f"❌ Erreur dans calculate_advanced_metrics: {str(e)}")
+                    metrics = None
             
             if metrics and metrics['krr'] is not None:
                 # Display main Krr result
