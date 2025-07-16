@@ -766,8 +766,19 @@ if page == "🏠 Analyse Unique":
                     st.success("Données effacées!")
                     st.rerun()
 
-    # Analysis only if data is loaded
-    if df is not None and len(df_valid) > 0:
+    # Store data in session state for persistence across interactions
+    if df is not None:
+        st.session_state['current_df'] = df
+        if df_valid is not None and len(df_valid) > 0:
+            st.session_state['current_df_valid'] = df_valid
+    
+    # Use data from session state if available
+    if 'current_df' in st.session_state and 'current_df_valid' in st.session_state:
+        df = st.session_state['current_df']
+        df_valid = st.session_state['current_df_valid']
+    
+    # Analysis section - ALWAYS show if we have data
+    if df is not None and df_valid is not None and len(df_valid) > 0:
         
         # Quick data overview
         st.markdown("### 📊 Aperçu de Vos Données")
@@ -832,103 +843,263 @@ if page == "🏠 Analyse Unique":
             st.plotly_chart(fig_radius, use_container_width=True)
         
         # Basic Krr calculation
-        st.markdown("### 🧮 Calcul Krr Basique")
+        st.markdown("---")  # Séparateur visuel
+        st.markdown("### 🧮 Calcul Krr et Analyse Avancée")
         
+        # Parameters input in columns
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            fps = st.number_input("FPS Caméra", value=250.0, min_value=1.0)
-            pixels_per_mm = st.number_input("Calibration (px/mm)", value=5.0, min_value=0.1)
+            st.markdown("**⚙️ Paramètres Caméra**")
+            fps = st.number_input("FPS Caméra", value=250.0, min_value=1.0, max_value=1000.0, key="fps_input")
+            pixels_per_mm = st.number_input("Calibration (px/mm)", value=5.0, min_value=0.1, max_value=50.0, key="calib_input")
         
         with col2:
-            sphere_mass_g = st.number_input("Masse Sphère (g)", value=10.0, min_value=0.1)
-            angle_deg = st.number_input("Angle Inclinaison (°)", value=15.0, min_value=0.1)
+            st.markdown("**🔧 Paramètres Sphère**")
+            sphere_mass_g = st.number_input("Masse Sphère (g)", value=10.0, min_value=0.1, max_value=1000.0, key="mass_input")
+            angle_deg = st.number_input("Angle Inclinaison (°)", value=15.0, min_value=0.1, max_value=45.0, key="angle_input")
         
-        if st.button("🚀 Calculer Krr"):
-            metrics = calculate_advanced_metrics(df_valid, fps, pixels_per_mm, sphere_mass_g, angle_deg)
+        with col3:
+            st.markdown("**🎯 Actions**")
+            st.write("")  # Spacing
+            calculate_krr = st.button("🚀 Calculer Krr et Métriques", type="primary", key="calc_krr_btn")
+            st.write("")
+            show_basic_plots = st.button("📈 Afficher Graphiques de Base", key="basic_plots_btn")
+        
+        # Always show basic plots if requested
+        if show_basic_plots:
+            st.markdown("### 📈 Graphiques de Base")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Trajectory plot
+                fig_traj = px.scatter(df_valid, x='X_center', y='Y_center', 
+                                   color='Frame', 
+                                   title="🛤️ Trajectoire de la Sphère",
+                                   labels={'X_center': 'Position X (pixels)', 
+                                          'Y_center': 'Position Y (pixels)',
+                                          'Frame': 'Frame'})
+                fig_traj.update_yaxes(autorange="reversed")
+                fig_traj.update_layout(height=400)
+                st.plotly_chart(fig_traj, use_container_width=True)
+            
+            with col2:
+                # Radius evolution
+                fig_radius = px.line(df_valid, x='Frame', y='Radius',
+                                   title="⚪ Évolution du Rayon Détecté",
+                                   labels={'Frame': 'Numéro de Frame', 
+                                          'Radius': 'Rayon (pixels)'})
+                fig_radius.update_layout(height=400)
+                st.plotly_chart(fig_radius, use_container_width=True)
+            
+            # Position evolution
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig_x = px.line(df_valid, x='Frame', y='X_center',
+                               title="📍 Position X vs Frame",
+                               labels={'Frame': 'Numéro de Frame', 
+                                      'X_center': 'Position X (pixels)'})
+                fig_x.update_layout(height=350)
+                st.plotly_chart(fig_x, use_container_width=True)
+            
+            with col2:
+                fig_y = px.line(df_valid, x='Frame', y='Y_center',
+                               title="📍 Position Y vs Frame", 
+                               labels={'Frame': 'Numéro de Frame',
+                                      'Y_center': 'Position Y (pixels)'})
+                fig_y.update_layout(height=350)
+                st.plotly_chart(fig_y, use_container_width=True)
+        
+        # Advanced analysis if calculate button is pressed
+        if calculate_krr:
+            st.markdown("### 🔬 Analyse Avancée et Calcul Krr")
+            
+            with st.spinner("🧮 Calcul des métriques avancées en cours..."):
+                metrics = calculate_advanced_metrics(df_valid, fps, pixels_per_mm, sphere_mass_g, angle_deg)
             
             if metrics and metrics['krr'] is not None:
-                with col3:
+                # Display main Krr result
+                col1, col2, col3 = st.columns(3)
+                
+                with col2:  # Center the main result
                     st.markdown(f"""
                     <div class="prediction-card">
-                        <h4>Résultat Krr</h4>
-                        <p><strong>{metrics['krr']:.6f}</strong></p>
-                        <p>Vitesse: {metrics['max_velocity']*1000:.1f} mm/s</p>
+                        <h4>🎯 Résultat Principal</h4>
+                        <h2>Krr = {metrics['krr']:.6f}</h2>
+                        <p>Vitesse Max: {metrics['max_velocity']*1000:.1f} mm/s</p>
+                        <p>Distance: {metrics['distance']*1000:.1f} mm</p>
                     </div>
                     """, unsafe_allow_html=True)
                 
-                # Additional metrics
-                st.markdown("#### 📊 Métriques Supplémentaires")
+                # Additional metrics in a grid
+                st.markdown("#### 📊 Métriques Détaillées")
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
                     st.metric("Distance Totale", f"{metrics['distance']*1000:.1f} mm")
+                    st.metric("Vitesse Initiale", f"{metrics['v0']*1000:.1f} mm/s")
                 with col2:
                     st.metric("Durée", f"{metrics['duration']:.2f} s")
+                    st.metric("Vitesse Finale", f"{metrics['vf']*1000:.1f} mm/s")
                 with col3:
                     st.metric("Efficacité Énergétique", f"{metrics['energy_efficiency']:.1f}%")
+                    st.metric("Accélération Max", f"{metrics['max_acceleration']*1000:.1f} mm/s²")
                 with col4:
                     st.metric("Efficacité Trajectoire", f"{metrics['trajectory_efficiency']:.1f}%")
+                    st.metric("Force Résistance Max", f"{metrics['max_resistance_force']*1000:.1f} mN")
                 
                 # Advanced visualization
-                st.markdown("#### 📈 Visualisations Avancées")
+                st.markdown("#### 📈 Visualisations Cinématiques")
                 
-                # Create velocity and acceleration plots
+                # Create comprehensive plots
+                fig_comprehensive = make_subplots(
+                    rows=2, cols=2,
+                    subplot_titles=('🏃 Vitesse vs Temps', '🚀 Accélération vs Temps', 
+                                   '⚡ Puissance vs Temps', '🔋 Énergie Cinétique vs Temps'),
+                    vertical_spacing=0.12
+                )
+                
+                # Velocity plot
+                fig_comprehensive.add_trace(
+                    go.Scatter(x=metrics['time'], y=metrics['velocity']*1000, 
+                             mode='lines', name='Vitesse', line=dict(color='blue', width=2)),
+                    row=1, col=1
+                )
+                
+                # Acceleration plot  
+                fig_comprehensive.add_trace(
+                    go.Scatter(x=metrics['time'], y=metrics['acceleration']*1000,
+                             mode='lines', name='Accélération', line=dict(color='red', width=2)),
+                    row=1, col=2
+                )
+                
+                # Power plot
+                fig_comprehensive.add_trace(
+                    go.Scatter(x=metrics['time'], y=metrics['power']*1000,
+                             mode='lines', name='Puissance', line=dict(color='green', width=2)),
+                    row=2, col=1
+                )
+                
+                # Energy plot
+                fig_comprehensive.add_trace(
+                    go.Scatter(x=metrics['time'], y=metrics['energy_kinetic']*1000,
+                             mode='lines', name='Énergie', line=dict(color='purple', width=2)),
+                    row=2, col=2
+                )
+                
+                # Update axes labels
+                fig_comprehensive.update_xaxes(title_text="Temps (s)")
+                fig_comprehensive.update_yaxes(title_text="Vitesse (mm/s)", row=1, col=1)
+                fig_comprehensive.update_yaxes(title_text="Accélération (mm/s²)", row=1, col=2)
+                fig_comprehensive.update_yaxes(title_text="Puissance (mW)", row=2, col=1)
+                fig_comprehensive.update_yaxes(title_text="Énergie (mJ)", row=2, col=2)
+                
+                fig_comprehensive.update_layout(height=600, showlegend=False)
+                st.plotly_chart(fig_comprehensive, use_container_width=True)
+                
+                # Export detailed data
+                st.markdown("#### 💾 Exporter les Données")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    # Basic results
+                    basic_results = pd.DataFrame({
+                        'Parametre': ['Krr', 'Vitesse_Max_mm/s', 'Distance_mm', 'Duree_s', 'Efficacite_Energie_%'],
+                        'Valeur': [
+                            metrics['krr'],
+                            metrics['max_velocity']*1000,
+                            metrics['distance']*1000,
+                            metrics['duration'],
+                            metrics['energy_efficiency']
+                        ]
+                    })
+                    
+                    csv_basic = basic_results.to_csv(index=False)
+                    st.download_button(
+                        label="📋 Résultats Principaux (CSV)",
+                        data=csv_basic,
+                        file_name="resultats_principaux.csv",
+                        mime="text/csv"
+                    )
+                
+                with col2:
+                    # Detailed time series
+                    detailed_data = pd.DataFrame({
+                        'temps_s': metrics['time'],
+                        'vitesse_mm_s': metrics['velocity']*1000,
+                        'acceleration_mm_s2': metrics['acceleration']*1000,
+                        'force_resistance_mN': metrics['resistance_force']*1000,
+                        'puissance_mW': metrics['power']*1000,
+                        'energie_cinetique_mJ': metrics['energy_kinetic']*1000
+                    })
+                    
+                    csv_detailed = detailed_data.to_csv(index=False)
+                    st.download_button(
+                        label="📈 Données Temporelles (CSV)",
+                        data=csv_detailed,
+                        file_name="donnees_temporelles.csv",
+                        mime="text/csv"
+                    )
+                
+                with col3:
+                    # Raw trajectory data
+                    trajectory_data = df_valid.copy()
+                    trajectory_data['temps_s'] = np.arange(len(trajectory_data)) / fps
+                    
+                    csv_trajectory = trajectory_data.to_csv(index=False)
+                    st.download_button(
+                        label="🛤️ Données Trajectoire (CSV)",
+                        data=csv_trajectory,
+                        file_name="donnees_trajectoire.csv",
+                        mime="text/csv"
+                    )
+                
+                # Physical interpretation
+                st.markdown("#### 🧠 Interprétation Physique")
+                
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    fig_vel = go.Figure()
-                    fig_vel.add_trace(go.Scatter(
-                        x=metrics['time'], 
-                        y=metrics['velocity'] * 1000,
-                        mode='lines',
-                        name='Vitesse',
-                        line=dict(color='blue', width=2)
-                    ))
-                    fig_vel.update_layout(
-                        title="Évolution de la Vitesse",
-                        xaxis_title="Temps (s)",
-                        yaxis_title="Vitesse (mm/s)"
-                    )
-                    st.plotly_chart(fig_vel, use_container_width=True)
+                    st.markdown("**🎯 Qualité de l'Expérience:**")
+                    if metrics['trajectory_efficiency'] > 90:
+                        st.success("✅ Trajectoire très droite - Excellente qualité")
+                    elif metrics['trajectory_efficiency'] > 80:
+                        st.success("✅ Trajectoire droite - Bonne qualité")
+                    elif metrics['trajectory_efficiency'] > 70:
+                        st.warning("⚠️ Trajectoire légèrement déviée")
+                    else:
+                        st.error("❌ Trajectoire très déviée - Vérifier le setup")
+                    
+                    if metrics['energy_efficiency'] > 70:
+                        st.success("✅ Bonne conservation d'énergie")
+                    elif metrics['energy_efficiency'] > 50:
+                        st.warning("⚠️ Perte d'énergie modérée")
+                    else:
+                        st.error("❌ Perte d'énergie importante")
                 
                 with col2:
-                    fig_accel = go.Figure()
-                    fig_accel.add_trace(go.Scatter(
-                        x=metrics['time'], 
-                        y=metrics['acceleration'] * 1000,
-                        mode='lines',
-                        name='Accélération',
-                        line=dict(color='red', width=2)
-                    ))
-                    fig_accel.update_layout(
-                        title="Évolution de l'Accélération",
-                        xaxis_title="Temps (s)",
-                        yaxis_title="Accélération (mm/s²)"
-                    )
-                    st.plotly_chart(fig_accel, use_container_width=True)
+                    st.markdown("**📚 Comparaison Littérature:**")
+                    if metrics['krr'] is not None:
+                        if 0.03 <= metrics['krr'] <= 0.10:
+                            st.success("✅ Krr cohérent avec Van Wal (2017)")
+                        elif metrics['krr'] < 0:
+                            st.error("⚠️ Krr négatif - sphère accélère!")
+                        elif metrics['krr'] > 0.15:
+                            st.warning("⚠️ Krr très élevé - vérifier conditions")
+                        else:
+                            st.info("💡 Krr en dehors de la gamme littérature")
+                        
+                        st.metric("Référence Van Wal", "0.05-0.07", f"{(metrics['krr']-0.06)/0.06*100:+.1f}%")
                 
-                # Export detailed data
-                st.markdown("#### 💾 Exporter les Données Détaillées")
-                
-                detailed_data = pd.DataFrame({
-                    'temps_s': metrics['time'],
-                    'vitesse_ms': metrics['velocity'],
-                    'acceleration_ms2': metrics['acceleration'],
-                    'force_resistance_N': metrics['resistance_force'],
-                    'puissance_W': metrics['power'],
-                    'energie_cinetique_J': metrics['energy_kinetic']
-                })
-                
-                csv_data = detailed_data.to_csv(index=False)
-                st.download_button(
-                    label="📥 Télécharger les données détaillées (CSV)",
-                    data=csv_data,
-                    file_name="analyse_cinetique_detaillee.csv",
-                    mime="text/csv"
-                )
             else:
-                st.error("❌ Impossible de calculer Krr - données insuffisantes")
+                st.error("❌ Impossible de calculer Krr - données insuffisantes ou problème dans les calculs")
+                st.info("💡 Vérifiez que :")
+                st.info("• Vous avez au moins 10 détections valides")
+                st.info("• La sphère se déplace effectivement")
+                st.info("• Les paramètres physiques sont corrects")
     
     else:
         # Message if no data is loaded
