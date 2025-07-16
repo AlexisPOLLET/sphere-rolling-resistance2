@@ -303,6 +303,7 @@ analysis_type = st.sidebar.selectbox(
         "📊 Code 2 : Analyse Krr",
         "🔬 Code 3 : Analyse Complète Avancée",
         "🔍 Comparaison Multi-Expériences",
+        "🔄 Analyse de Reproductibilité",
         "🎯 Module de Prédiction",
         "📄 Rapport Auto-Généré"
     ]
@@ -1150,6 +1151,432 @@ if st.session_state.current_df_valid is not None and len(st.session_state.curren
                 
             else:
                 st.error("❌ Impossible de calculer les métriques - données insuffisantes")
+        
+        st.markdown("</div></div>", unsafe_allow_html=True)
+    
+    # ===== REPRODUCIBILITY ANALYSIS =====
+    elif analysis_type == "🔄 Analyse de Reproductibilité":
+        st.markdown("""
+        <div class="analysis-results">
+            <h2 class="results-header">🔄 Analyse de Reproductibilité et Détection d'Anomalies</h2>
+            <div class="results-content">
+        """, unsafe_allow_html=True)
+        
+        if not st.session_state.experiments:
+            st.warning("⚠️ Aucune expérience disponible pour l'analyse de reproductibilité.")
+            
+            if st.button("📊 Charger des expériences d'exemple avec répétitions"):
+                # Create sample experiments with repetitions
+                conditions = [
+                    (0, "Steel"), (10, "Steel"), (20, "Steel"),
+                    (0, "Plastic"), (10, "Plastic"), (20, "Plastic")
+                ]
+                
+                for water, material in conditions:
+                    # Create 3 repetitions for each condition
+                    for rep in range(1, 4):
+                        # Add some variation for realism
+                        variation = np.random.normal(0, 0.5)  # Small random variation
+                        df_sample, metadata = create_sample_data_with_metadata(
+                            f"{material}_W{water}%_Rep{rep}", 
+                            water + variation, 
+                            material
+                        )
+                        # Add noise to make some experiments anomalous
+                        if rep == 2 and water == 10:  # Make second repetition of 10% water anomalous
+                            # Modify data to create anomaly
+                            df_sample.loc[df_sample['X_center'] != 0, 'X_center'] *= 0.8
+                        
+                        st.session_state.experiments[f"{material}_W{water}%_Rep{rep}"] = {
+                            'data': df_sample,
+                            'metadata': metadata
+                        }
+                st.success("✅ Expériences d'exemple avec répétitions chargées!")
+                st.rerun()
+        else:
+            
+            # Group experiments by conditions
+            def group_experiments_by_conditions(experiments):
+                groups = {}
+                for exp_name, exp in experiments.items():
+                    meta = exp['metadata']
+                    # Create condition key (water content rounded to nearest 0.5, sphere type)
+                    water_key = round(meta['water_content'] * 2) / 2  # Round to nearest 0.5
+                    condition_key = f"{meta['sphere_type']}_W{water_key}%"
+                    
+                    if condition_key not in groups:
+                        groups[condition_key] = []
+                    
+                    groups[condition_key].append({
+                        'name': exp_name,
+                        'data': exp['data'],
+                        'metadata': meta
+                    })
+                
+                return groups
+            
+            # Detect anomalies using statistical methods
+            def detect_anomalies(group_data, threshold=2.0):
+                """Detect anomalies in a group of experiments using Z-score"""
+                if len(group_data) < 3:
+                    return []
+                
+                # Calculate metrics for each experiment
+                metrics_list = []
+                for exp in group_data:
+                    df_valid = exp['data'][(exp['data']['X_center'] != 0) & 
+                                          (exp['data']['Y_center'] != 0) & 
+                                          (exp['data']['Radius'] != 0)]
+                    
+                    if len(df_valid) > 10:
+                        metrics = calculate_advanced_metrics(df_valid)
+                        if metrics and metrics['krr'] is not None:
+                            metrics_list.append({
+                                'name': exp['name'],
+                                'krr': metrics['krr'],
+                                'max_velocity': metrics['max_velocity'],
+                                'energy_efficiency': metrics['energy_efficiency'],
+                                'trajectory_efficiency': metrics['trajectory_efficiency']
+                            })
+                
+                if len(metrics_list) < 3:
+                    return []
+                
+                # Calculate Z-scores for key metrics
+                anomalies = []
+                for metric_name in ['krr', 'max_velocity', 'energy_efficiency']:
+                    values = [m[metric_name] for m in metrics_list if m[metric_name] is not None]
+                    if len(values) >= 3:
+                        mean_val = np.mean(values)
+                        std_val = np.std(values)
+                        
+                        if std_val > 0:
+                            for i, m in enumerate(metrics_list):
+                                if m[metric_name] is not None:
+                                    z_score = abs((m[metric_name] - mean_val) / std_val)
+                                    if z_score > threshold:
+                                        anomalies.append({
+                                            'name': m['name'],
+                                            'metric': metric_name,
+                                            'value': m[metric_name],
+                                            'z_score': z_score,
+                                            'mean': mean_val,
+                                            'std': std_val
+                                        })
+                
+                return anomalies
+            
+            # Group experiments
+            groups = group_experiments_by_conditions(st.session_state.experiments)
+            
+            st.markdown("### 📊 Groupement par Conditions Expérimentales")
+            
+            # Show groups summary
+            group_summary = []
+            for condition, experiments in groups.items():
+                group_summary.append({
+                    'Condition': condition,
+                    'Nombre d\'expériences': len(experiments),
+                    'Expériences': ', '.join([exp['name'] for exp in experiments])
+                })
+            
+            group_df = pd.DataFrame(group_summary)
+            st.dataframe(group_df, use_container_width=True)
+            
+            # Select condition for detailed analysis
+            st.markdown("### 🎯 Sélection pour Analyse Détaillée")
+            
+            # Only show conditions with multiple experiments
+            multi_exp_conditions = {k: v for k, v in groups.items() if len(v) >= 2}
+            
+            if not multi_exp_conditions:
+                st.warning("⚠️ Aucune condition avec plusieurs expériences trouvée pour l'analyse de reproductibilité.")
+            else:
+                selected_condition = st.selectbox(
+                    "Choisissez une condition à analyser:",
+                    options=list(multi_exp_conditions.keys())
+                )
+                
+                if selected_condition:
+                    condition_experiments = multi_exp_conditions[selected_condition]
+                    
+                    st.markdown(f"### 🔍 Analyse de Reproductibilité - {selected_condition}")
+                    
+                    # Calculate metrics for all experiments in the group
+                    experiment_metrics = []
+                    valid_experiments = []
+                    
+                    for exp in condition_experiments:
+                        df_valid = exp['data'][(exp['data']['X_center'] != 0) & 
+                                              (exp['data']['Y_center'] != 0) & 
+                                              (exp['data']['Radius'] != 0)]
+                        
+                        if len(df_valid) > 10:
+                            metrics = calculate_advanced_metrics(df_valid)
+                            if metrics and metrics['krr'] is not None:
+                                experiment_metrics.append({
+                                    'Expérience': exp['name'],
+                                    'Krr': metrics['krr'],
+                                    'Vitesse_Max': metrics['max_velocity'],
+                                    'Efficacité_Énergie': metrics['energy_efficiency'],
+                                    'Efficacité_Trajectoire': metrics['trajectory_efficiency'],
+                                    'Distance': metrics['distance'],
+                                    'Durée': metrics['duration']
+                                })
+                                valid_experiments.append(exp)
+                    
+                    if len(experiment_metrics) < 2:
+                        st.error("❌ Pas assez d'expériences valides pour l'analyse de reproductibilité.")
+                    else:
+                        metrics_df = pd.DataFrame(experiment_metrics)
+                        
+                        # Detect anomalies
+                        anomalies = detect_anomalies(condition_experiments, threshold=2.0)
+                        
+                        st.markdown("#### 🚨 Détection d'Anomalies")
+                        
+                        if anomalies:
+                            st.markdown("**Anomalies détectées:**")
+                            anomaly_df = pd.DataFrame(anomalies)
+                            
+                            for _, anomaly in anomaly_df.iterrows():
+                                st.markdown(f"""
+                                <div class="status-warning">
+                                    ⚠️ <strong>{anomaly['name']}</strong> - {anomaly['metric']}: 
+                                    {anomaly['value']:.6f} (Z-score: {anomaly['z_score']:.2f})
+                                </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.markdown('<div class="status-success">✅ Aucune anomalie détectée</div>', unsafe_allow_html=True)
+                        
+                        # Filter out anomalous experiments
+                        anomalous_names = list(set([a['name'] for a in anomalies]))
+                        filtered_metrics = metrics_df[~metrics_df['Expérience'].isin(anomalous_names)]
+                        
+                        if len(filtered_metrics) < 2:
+                            st.warning("⚠️ Pas assez d'expériences valides après filtrage des anomalies.")
+                        else:
+                            st.markdown("#### 📊 Statistiques de Reproductibilité")
+                            
+                            # Calculate reproducibility statistics
+                            repro_stats = []
+                            numeric_cols = ['Krr', 'Vitesse_Max', 'Efficacité_Énergie', 'Efficacité_Trajectoire']
+                            
+                            for col in numeric_cols:
+                                if col in filtered_metrics.columns:
+                                    values = filtered_metrics[col].dropna()
+                                    if len(values) > 0:
+                                        mean_val = values.mean()
+                                        std_val = values.std()
+                                        cv = (std_val / mean_val * 100) if mean_val != 0 else 0
+                                        
+                                        repro_stats.append({
+                                            'Paramètre': col,
+                                            'Moyenne': mean_val,
+                                            'Écart-type': std_val,
+                                            'CV (%)': cv,
+                                            'Min': values.min(),
+                                            'Max': values.max(),
+                                            'N': len(values)
+                                        })
+                            
+                            repro_df = pd.DataFrame(repro_stats)
+                            
+                            # Display formatted statistics
+                            st.markdown("##### 📈 Statistiques Descriptives")
+                            
+                            for _, stat in repro_df.iterrows():
+                                col1, col2, col3, col4 = st.columns(4)
+                                
+                                with col1:
+                                    st.markdown(f"""
+                                    <div class="metric-item">
+                                        <div class="metric-value">{stat['Moyenne']:.4f}</div>
+                                        <div class="metric-label">{stat['Paramètre']} - Moyenne</div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                
+                                with col2:
+                                    st.markdown(f"""
+                                    <div class="metric-item">
+                                        <div class="metric-value">{stat['Écart-type']:.4f}</div>
+                                        <div class="metric-label">Écart-type</div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                
+                                with col3:
+                                    cv_color = "red" if stat['CV (%)'] > 10 else "orange" if stat['CV (%)'] > 5 else "green"
+                                    st.markdown(f"""
+                                    <div class="metric-item">
+                                        <div class="metric-value" style="color: {cv_color};">{stat['CV (%)']:.1f}%</div>
+                                        <div class="metric-label">CV (Reproductibilité)</div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                
+                                with col4:
+                                    st.markdown(f"""
+                                    <div class="metric-item">
+                                        <div class="metric-value">{stat['N']}</div>
+                                        <div class="metric-label">Échantillons valides</div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                            
+                            # Visualizations
+                            st.markdown("#### 📈 Visualisations de Reproductibilité")
+                            
+                            # Create comparison plots
+                            fig_repro = make_subplots(
+                                rows=2, cols=2,
+                                subplot_titles=('Coefficient Krr', 'Vitesse Maximale', 
+                                               'Efficacité Énergétique', 'Efficacité Trajectoire'),
+                                specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                                       [{"secondary_y": False}, {"secondary_y": False}]]
+                            )
+                            
+                            # Plot each metric
+                            plot_configs = [
+                                ('Krr', 1, 1), ('Vitesse_Max', 1, 2), 
+                                ('Efficacité_Énergie', 2, 1), ('Efficacité_Trajectoire', 2, 2)
+                            ]
+                            
+                            for metric, row, col in plot_configs:
+                                if metric in metrics_df.columns:
+                                    # All experiments (including anomalous)
+                                    fig_repro.add_trace(
+                                        go.Scatter(
+                                            x=metrics_df['Expérience'],
+                                            y=metrics_df[metric],
+                                            mode='markers',
+                                            name=f'{metric} - Toutes',
+                                            marker=dict(color='red', size=10, symbol='x'),
+                                            showlegend=False
+                                        ),
+                                        row=row, col=col
+                                    )
+                                    
+                                    # Filtered experiments (without anomalies)
+                                    fig_repro.add_trace(
+                                        go.Scatter(
+                                            x=filtered_metrics['Expérience'],
+                                            y=filtered_metrics[metric],
+                                            mode='markers',
+                                            name=f'{metric} - Filtrées',
+                                            marker=dict(color='blue', size=12, symbol='circle'),
+                                            showlegend=False
+                                        ),
+                                        row=row, col=col
+                                    )
+                                    
+                                    # Add mean line
+                                    if len(filtered_metrics) > 0:
+                                        mean_val = filtered_metrics[metric].mean()
+                                        fig_repro.add_hline(
+                                            y=mean_val, 
+                                            line_dash="dash", 
+                                            line_color="green",
+                                            row=row, col=col
+                                        )
+                                        
+                                        # Add confidence bands (±1 std)
+                                        std_val = filtered_metrics[metric].std()
+                                        fig_repro.add_hline(
+                                            y=mean_val + std_val, 
+                                            line_dash="dot", 
+                                            line_color="orange",
+                                            row=row, col=col
+                                        )
+                                        fig_repro.add_hline(
+                                            y=mean_val - std_val, 
+                                            line_dash="dot", 
+                                            line_color="orange",
+                                            row=row, col=col
+                                        )
+                            
+                            fig_repro.update_layout(height=600, showlegend=False)
+                            fig_repro.update_xaxes(tickangle=45)
+                            st.plotly_chart(fig_repro, use_container_width=True)
+                            
+                            # Summary assessment
+                            st.markdown("#### 🎯 Évaluation de la Reproductibilité")
+                            
+                            # Calculate overall reproducibility score
+                            cv_values = [stat['CV (%)'] for stat in repro_stats if stat['CV (%)'] > 0]
+                            if cv_values:
+                                avg_cv = np.mean(cv_values)
+                                
+                                if avg_cv < 5:
+                                    repro_grade = "Excellente"
+                                    repro_color = "success"
+                                elif avg_cv < 10:
+                                    repro_grade = "Bonne"
+                                    repro_color = "success"
+                                elif avg_cv < 15:
+                                    repro_grade = "Modérée"
+                                    repro_color = "warning"
+                                else:
+                                    repro_grade = "Faible"
+                                    repro_color = "error"
+                                
+                                st.markdown(f"""
+                                <div class="status-{repro_color}">
+                                    📊 <strong>Reproductibilité {repro_grade}</strong><br>
+                                    • CV moyen: {avg_cv:.1f}%<br>
+                                    • Expériences valides: {len(filtered_metrics)}/{len(metrics_df)}<br>
+                                    • Anomalies détectées: {len(anomalous_names)}
+                                </div>
+                                """, unsafe_allow_html=True)
+                            
+                            # Export reproducibility report
+                            st.markdown("#### 💾 Export Rapport de Reproductibilité")
+                            
+                            export_col1, export_col2 = st.columns(2)
+                            
+                            with export_col1:
+                                # Summary report
+                                repro_report = f"""
+RAPPORT DE REPRODUCTIBILITÉ - {selected_condition}
+
+=== RÉSUMÉ ===
+Condition: {selected_condition}
+Expériences totales: {len(metrics_df)}
+Expériences valides: {len(filtered_metrics)}
+Anomalies détectées: {len(anomalous_names)}
+
+=== STATISTIQUES ===
+"""
+                                for _, stat in repro_df.iterrows():
+                                    repro_report += f"""
+{stat['Paramètre']}:
+  Moyenne: {stat['Moyenne']:.6f}
+  Écart-type: {stat['Écart-type']:.6f}
+  CV: {stat['CV (%)']:.1f}%
+  Gamme: {stat['Min']:.6f} - {stat['Max']:.6f}
+"""
+                                
+                                if anomalies:
+                                    repro_report += "\n=== ANOMALIES DÉTECTÉES ===\n"
+                                    for anomaly in anomalies:
+                                        repro_report += f"• {anomaly['name']} - {anomaly['metric']}: Z-score = {anomaly['z_score']:.2f}\n"
+                                
+                                st.download_button(
+                                    label="📄 Rapport Reproductibilité (TXT)",
+                                    data=repro_report,
+                                    file_name=f"reproductibilite_{selected_condition}.txt",
+                                    mime="text/plain"
+                                )
+                            
+                            with export_col2:
+                                # Detailed data
+                                export_data = metrics_df.copy()
+                                export_data['Anomalie'] = export_data['Expérience'].isin(anomalous_names)
+                                
+                                csv_repro = export_data.to_csv(index=False)
+                                st.download_button(
+                                    label="📊 Données Détaillées (CSV)",
+                                    data=csv_repro,
+                                    file_name=f"donnees_reproductibilite_{selected_condition}.csv",
+                                    mime="text/csv"
+                                )
         
         st.markdown("</div></div>", unsafe_allow_html=True)
     
