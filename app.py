@@ -1496,6 +1496,231 @@ if st.session_state.current_df_valid is not None and len(st.session_state.curren
                             fig_repro.update_xaxes(tickangle=45)
                             st.plotly_chart(fig_repro, use_container_width=True)
                             
+                            # Time series comparison with averages
+                            st.markdown("#### 📈 Comparaison des Séries Temporelles")
+                            
+                            # Calculate time series for all valid experiments
+                            time_series_data = []
+                            max_time_points = 0
+                            
+                            for exp in valid_experiments:
+                                df_valid_exp = exp['data'][(exp['data']['X_center'] != 0) & 
+                                                          (exp['data']['Y_center'] != 0) & 
+                                                          (exp['data']['Radius'] != 0)]
+                                
+                                if len(df_valid_exp) > 10:
+                                    metrics = calculate_advanced_metrics(df_valid_exp)
+                                    if metrics and metrics['krr'] is not None:
+                                        is_anomaly = exp['name'] in anomalous_names
+                                        time_series_data.append({
+                                            'name': exp['name'],
+                                            'time': metrics['time'],
+                                            'velocity': metrics['velocity'],
+                                            'acceleration': metrics['acceleration'],
+                                            'power': metrics['power'],
+                                            'energy_kinetic': metrics['energy_kinetic'],
+                                            'is_anomaly': is_anomaly
+                                        })
+                                        max_time_points = max(max_time_points, len(metrics['time']))
+                            
+                            if len(time_series_data) >= 2:
+                                
+                                # Create time series plots
+                                fig_time_series = make_subplots(
+                                    rows=2, cols=2,
+                                    subplot_titles=('Vitesse vs Temps', 'Accélération vs Temps', 
+                                                   'Puissance vs Temps', 'Énergie Cinétique vs Temps'),
+                                    specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                                           [{"secondary_y": False}, {"secondary_y": False}]]
+                                )
+                                
+                                # Plot configurations
+                                plot_configs = [
+                                    ('velocity', 'Vitesse (mm/s)', 1000, 1, 1),
+                                    ('acceleration', 'Accélération (mm/s²)', 1000, 1, 2),
+                                    ('power', 'Puissance (mW)', 1000, 2, 1),
+                                    ('energy_kinetic', 'Énergie Cinétique (mJ)', 1000, 2, 2)
+                                ]
+                                
+                                for metric, ylabel, scale_factor, row, col in plot_configs:
+                                    # Plot individual experiments
+                                    valid_series = []
+                                    
+                                    for ts_data in time_series_data:
+                                        if metric in ts_data and ts_data[metric] is not None:
+                                            color = 'red' if ts_data['is_anomaly'] else 'lightblue'
+                                            opacity = 0.3 if ts_data['is_anomaly'] else 0.6
+                                            line_width = 1 if ts_data['is_anomaly'] else 2
+                                            
+                                            fig_time_series.add_trace(
+                                                go.Scatter(
+                                                    x=ts_data['time'],
+                                                    y=ts_data[metric] * scale_factor,
+                                                    mode='lines',
+                                                    name=ts_data['name'],
+                                                    line=dict(color=color, width=line_width),
+                                                    opacity=opacity,
+                                                    showlegend=False
+                                                ),
+                                                row=row, col=col
+                                            )
+                                            
+                                            # Collect valid series for averaging
+                                            if not ts_data['is_anomaly']:
+                                                valid_series.append(ts_data[metric])
+                                    
+                                    # Calculate and plot average curve
+                                    if len(valid_series) >= 2:
+                                        # Interpolate all series to common time grid
+                                        max_time = max([max(ts_data['time']) for ts_data in time_series_data 
+                                                       if not ts_data['is_anomaly']])
+                                        min_time = min([min(ts_data['time']) for ts_data in time_series_data 
+                                                       if not ts_data['is_anomaly']])
+                                        
+                                        # Create common time grid
+                                        common_time = np.linspace(min_time, max_time, 100)
+                                        interpolated_series = []
+                                        
+                                        for i, ts_data in enumerate(time_series_data):
+                                            if not ts_data['is_anomaly'] and metric in ts_data:
+                                                # Interpolate to common time grid
+                                                interp_values = np.interp(common_time, ts_data['time'], ts_data[metric])
+                                                interpolated_series.append(interp_values)
+                                        
+                                        if len(interpolated_series) >= 2:
+                                            # Calculate mean and std
+                                            mean_curve = np.mean(interpolated_series, axis=0)
+                                            std_curve = np.std(interpolated_series, axis=0)
+                                            
+                                            # Plot mean curve
+                                            fig_time_series.add_trace(
+                                                go.Scatter(
+                                                    x=common_time,
+                                                    y=mean_curve * scale_factor,
+                                                    mode='lines',
+                                                    name=f'Moyenne {metric}',
+                                                    line=dict(color='darkblue', width=4),
+                                                    showlegend=False
+                                                ),
+                                                row=row, col=col
+                                            )
+                                            
+                                            # Add confidence bands (±1 std)
+                                            fig_time_series.add_trace(
+                                                go.Scatter(
+                                                    x=common_time,
+                                                    y=(mean_curve + std_curve) * scale_factor,
+                                                    mode='lines',
+                                                    line=dict(color='darkblue', width=0),
+                                                    showlegend=False,
+                                                    hoverinfo='skip'
+                                                ),
+                                                row=row, col=col
+                                            )
+                                            
+                                            fig_time_series.add_trace(
+                                                go.Scatter(
+                                                    x=common_time,
+                                                    y=(mean_curve - std_curve) * scale_factor,
+                                                    mode='lines',
+                                                    line=dict(color='darkblue', width=0),
+                                                    fill='tonexty',
+                                                    fillcolor='rgba(0,0,139,0.2)',
+                                                    showlegend=False,
+                                                    hoverinfo='skip'
+                                                ),
+                                                row=row, col=col
+                                            )
+                                    
+                                    # Update axes
+                                    fig_time_series.update_yaxes(title_text=ylabel, row=row, col=col)
+                                
+                                fig_time_series.update_xaxes(title_text="Temps (s)")
+                                fig_time_series.update_layout(
+                                    height=700, 
+                                    showlegend=False,
+                                    title_text="Comparaison des Séries Temporelles avec Moyennes"
+                                )
+                                
+                                st.plotly_chart(fig_time_series, use_container_width=True)
+                                
+                                # Add legend explanation
+                                st.markdown("""
+                                **Légende des courbes:**
+                                - 🔴 **Lignes rouges fines** : Expériences anomales (exclues du calcul de moyenne)
+                                - 🔵 **Lignes bleues claires** : Expériences valides
+                                - 🔵 **Ligne bleue épaisse** : Moyenne des expériences valides
+                                - 🔵 **Zone bleue transparente** : Bande de confiance (±1 écart-type)
+                                """)
+                                
+                                # Statistical analysis of time series
+                                st.markdown("#### 📊 Analyse Statistique des Séries Temporelles")
+                                
+                                # Calculate reproducibility metrics for time series
+                                ts_stats = []
+                                for metric, ylabel, scale_factor, row, col in plot_configs:
+                                    valid_ts = [ts_data[metric] for ts_data in time_series_data 
+                                               if not ts_data['is_anomaly'] and metric in ts_data]
+                                    
+                                    if len(valid_ts) >= 2:
+                                        # Calculate point-wise statistics
+                                        min_length = min([len(ts) for ts in valid_ts])
+                                        truncated_series = [ts[:min_length] for ts in valid_ts]
+                                        
+                                        # Calculate mean CV across time points
+                                        point_wise_cv = []
+                                        for i in range(min_length):
+                                            values = [ts[i] for ts in truncated_series]
+                                            mean_val = np.mean(values)
+                                            std_val = np.std(values)
+                                            if mean_val != 0:
+                                                cv = (std_val / mean_val) * 100
+                                                point_wise_cv.append(cv)
+                                        
+                                        if point_wise_cv:
+                                            avg_cv = np.mean(point_wise_cv)
+                                            max_cv = np.max(point_wise_cv)
+                                            
+                                            ts_stats.append({
+                                                'Métrique': metric.replace('_', ' ').title(),
+                                                'CV Moyen (%)': avg_cv,
+                                                'CV Max (%)': max_cv,
+                                                'Expériences': len(valid_ts),
+                                                'Points temporels': min_length
+                                            })
+                                
+                                if ts_stats:
+                                    ts_stats_df = pd.DataFrame(ts_stats)
+                                    st.dataframe(ts_stats_df, use_container_width=True)
+                                    
+                                    # Overall time series reproducibility assessment
+                                    avg_cv_all = np.mean([stat['CV Moyen (%)'] for stat in ts_stats])
+                                    
+                                    if avg_cv_all < 5:
+                                        ts_grade = "Excellente"
+                                        ts_color = "success"
+                                    elif avg_cv_all < 10:
+                                        ts_grade = "Bonne"
+                                        ts_color = "success"
+                                    elif avg_cv_all < 15:
+                                        ts_grade = "Modérée"
+                                        ts_color = "warning"
+                                    else:
+                                        ts_grade = "Faible"
+                                        ts_color = "error"
+                                    
+                                    st.markdown(f"""
+                                    <div class="status-{ts_color}">
+                                        📈 <strong>Reproductibilité Temporelle: {ts_grade}</strong><br>
+                                        • CV moyen des séries temporelles: {avg_cv_all:.1f}%<br>
+                                        • Expériences valides: {len([ts for ts in time_series_data if not ts['is_anomaly']])}<br>
+                                        • Cohérence temporelle: {"Élevée" if avg_cv_all < 10 else "Modérée" if avg_cv_all < 20 else "Faible"}
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                
+                            else:
+                                st.warning("⚠️ Pas assez de séries temporelles valides pour la comparaison.")
+                            
                             # Summary assessment
                             st.markdown("#### 🎯 Évaluation de la Reproductibilité")
                             
