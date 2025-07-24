@@ -1810,6 +1810,7 @@ Distance totale: {friction_results['total_distance']*1000:.2f} mm
     
 # Remplacez cette partie dans la section "Comparaison Multi-Expériences" :
 
+# ===== COMPARAISON MULTI-EXPÉRIENCES =====
 elif analysis_type == "🔍 Comparaison Multi-Expériences":
     st.markdown("# 🔍 Comparaison Multi-Expériences")
     
@@ -1916,93 +1917,93 @@ elif analysis_type == "🔍 Comparaison Multi-Expériences":
         
         else:
             st.info("Veuillez sélectionner au moins 2 expériences pour la comparaison")
+
+# ===== PREDICTION MODULE =====
+elif analysis_type == "🎯 Module de Prédiction":
+    st.markdown("# 🎯 Module de Prédiction")
     
-    # ===== PREDICTION MODULE =====
-    elif analysis_type == "🎯 Module de Prédiction":
-        st.markdown("# 🎯 Module de Prédiction")
+    if not st.session_state.experiments:
+        st.warning("⚠️ Aucune donnée expérimentale disponible pour les prédictions.")
         
-        if not st.session_state.experiments:
-            st.warning("⚠️ Aucune donnée expérimentale disponible pour les prédictions.")
+        if st.button("📊 Charger des données d'exemple pour prédiction"):
+            water_contents = [0, 5, 10, 15, 20, 25]
+            for w in water_contents:
+                df_sample, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
+                st.session_state.experiments[f"Sample_W{w}%"] = {
+                    'data': df_sample,
+                    'metadata': metadata
+                }
+            st.success("✅ Données d'exemple chargées!")
+            st.rerun()
+    else:
+        # Build simple prediction models
+        all_data = []
+        for exp_name, exp in st.session_state.experiments.items():
+            df_exp = exp['data']
+            meta = exp['metadata']
+            df_exp_valid = df_exp[(df_exp['X_center'] != 0) & (df_exp['Y_center'] != 0) & (df_exp['Radius'] != 0)]
             
-            if st.button("📊 Charger des données d'exemple pour prédiction"):
-                water_contents = [0, 5, 10, 15, 20, 25]
-                for w in water_contents:
-                    df_sample, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
-                    st.session_state.experiments[f"Sample_W{w}%"] = {
-                        'data': df_sample,
-                        'metadata': metadata
-                    }
-                st.success("✅ Données d'exemple chargées!")
-                st.rerun()
+            metrics = calculate_advanced_metrics(df_exp_valid)
+            if metrics and metrics['krr'] is not None:
+                all_data.append({
+                    'water_content': meta['water_content'],
+                    'krr': metrics['krr'],
+                    'energy_efficiency': metrics['energy_efficiency']
+                })
+        
+        if len(all_data) >= 3:
+            model_df = pd.DataFrame(all_data)
+            
+            # Simple linear regression for Krr
+            water_vals = model_df['water_content'].values
+            krr_vals = model_df['krr'].values
+            
+            # Fit polynomial
+            coeffs = np.polyfit(water_vals, krr_vals, 1)
+            
+            st.markdown("### 🔮 Prédictions")
+            
+            pred_water = st.slider("Teneur en Eau pour Prédiction (%)", 0.0, 30.0, 10.0, 0.5)
+            
+            # Make prediction
+            predicted_krr = np.polyval(coeffs, pred_water)
+            
+            st.markdown(f"""
+            <div class="metric-item">
+                <div class="metric-value">{predicted_krr:.6f}</div>
+                <div class="metric-label">Krr Prédit</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show prediction plot
+            water_range = np.linspace(0, 30, 100)
+            krr_pred_range = np.polyval(coeffs, water_range)
+            
+            fig_pred = go.Figure()
+            fig_pred.add_trace(go.Scatter(x=water_vals, y=krr_vals, mode='markers',
+                                        name='Données expérimentales', marker=dict(color='red', size=10)))
+            fig_pred.add_trace(go.Scatter(x=water_range, y=krr_pred_range, mode='lines',
+                                        name='Prédiction', line=dict(color='blue', width=2)))
+            fig_pred.add_trace(go.Scatter(x=[pred_water], y=[predicted_krr], mode='markers',
+                                        name='Prédiction actuelle', marker=dict(color='green', size=15, symbol='star')))
+            
+            fig_pred.update_layout(
+                title="📈 Modèle de Prédiction Krr",
+                xaxis_title="Teneur en Eau (%)",
+                yaxis_title="Coefficient Krr"
+            )
+            
+            st.plotly_chart(fig_pred, use_container_width=True)
+            
+            # Model equation
+            a, b = coeffs
+            st.markdown(f"**Équation du modèle:** Krr = {a:.6f} × W + {b:.6f}")
+            
         else:
-            # Build simple prediction models
-            all_data = []
-            for exp_name, exp in st.session_state.experiments.items():
-                df_exp = exp['data']
-                meta = exp['metadata']
-                df_exp_valid = df_exp[(df_exp['X_center'] != 0) & (df_exp['Y_center'] != 0) & (df_exp['Radius'] != 0)]
-                
-                metrics = calculate_advanced_metrics(df_exp_valid)
-                if metrics and metrics['krr'] is not None:
-                    all_data.append({
-                        'water_content': meta['water_content'],
-                        'krr': metrics['krr'],
-                        'energy_efficiency': metrics['energy_efficiency']
-                    })
-            
-            if len(all_data) >= 3:
-                model_df = pd.DataFrame(all_data)
-                
-                # Simple linear regression for Krr
-                water_vals = model_df['water_content'].values
-                krr_vals = model_df['krr'].values
-                
-                # Fit polynomial
-                coeffs = np.polyfit(water_vals, krr_vals, 1)
-                
-                st.markdown("### 🔮 Prédictions")
-                
-                pred_water = st.slider("Teneur en Eau pour Prédiction (%)", 0.0, 30.0, 10.0, 0.5)
-                
-                # Make prediction
-                predicted_krr = np.polyval(coeffs, pred_water)
-                
-                st.markdown(f"""
-                <div class="metric-item">
-                    <div class="metric-value">{predicted_krr:.6f}</div>
-                    <div class="metric-label">Krr Prédit</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Show prediction plot
-                water_range = np.linspace(0, 30, 100)
-                krr_pred_range = np.polyval(coeffs, water_range)
-                
-                fig_pred = go.Figure()
-                fig_pred.add_trace(go.Scatter(x=water_vals, y=krr_vals, mode='markers',
-                                            name='Données expérimentales', marker=dict(color='red', size=10)))
-                fig_pred.add_trace(go.Scatter(x=water_range, y=krr_pred_range, mode='lines',
-                                            name='Prédiction', line=dict(color='blue', width=2)))
-                fig_pred.add_trace(go.Scatter(x=[pred_water], y=[predicted_krr], mode='markers',
-                                            name='Prédiction actuelle', marker=dict(color='green', size=15, symbol='star')))
-                
-                fig_pred.update_layout(
-                    title="📈 Modèle de Prédiction Krr",
-                    xaxis_title="Teneur en Eau (%)",
-                    yaxis_title="Coefficient Krr"
-                )
-                
-                st.plotly_chart(fig_pred, use_container_width=True)
-                
-                # Model equation
-                a, b = coeffs
-                st.markdown(f"**Équation du modèle:** Krr = {a:.6f} × W + {b:.6f}")
-                
-            else:
-                st.error("❌ Données insuffisantes pour construire un modèle prédictif. Besoin d'au moins 3 expériences.")
-    
-    # ===== AUTO-GENERATED REPORT =====
-    elif analysis_type == "📄 Rapport Auto-Généré":
+            st.error("❌ Données insuffisantes pour construire un modèle prédictif. Besoin d'au moins 3 expériences.")
+
+# ===== AUTO-GENERATED REPORT =====
+elif analysis_type == "📄 Rapport Auto-Généré":
         st.markdown("# 📄 Rapport d'Analyse Auto-Généré")
         
         if not st.session_state.experiments:
