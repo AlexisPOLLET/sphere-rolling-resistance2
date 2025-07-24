@@ -1248,8 +1248,6 @@ if st.session_state.current_df_valid is not None and len(st.session_state.curren
                 
                 # Key metrics in grid layout
                 adv_col1, adv_col2, adv_col3, adv_col4 = st.columns(4)
-                
-                withimport streamlit as st
 
                 with adv_col1:
                     st.markdown(f"""
