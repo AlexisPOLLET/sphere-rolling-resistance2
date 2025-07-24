@@ -163,7 +163,960 @@ def calculate_advanced_metrics(df_valid, fps=250, pixels_per_mm=5.0, sphere_mass
     """Calculate comprehensive kinematic and dynamic metrics"""
     if len(df_valid) < 10:
         return None
+        
+    # Ajoutez ces deux nouvelles fonctions après calculate_advanced_metrics
+def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0, fps=250.0, pixels_per_mm=5.0):
+    """
+    Calcule les différents coefficients de friction à partir des données de trajectoire
+    """
+    if len(df_valid) < 10:
+        return None
     
+    # [Copiez toute la fonction du code que j'ai créé]
+    
+    # Paramètres physiques
+    mass_kg = sphere_mass_g / 1000
+    angle_rad = np.radians(angle_deg)
+    g = 9.81
+    dt = 1 / fps
+    
+    # Conversion des positions en mètres
+    x_m = df_valid['X_center'].values / pixels_per_mm / 1000
+    y_m = df_valid['Y_center'].values / pixels_per_mm / 1000
+    
+    # Calcul des vitesses et accélérations
+    vx = np.gradient(x_m, dt)
+    vy = np.gradient(y_m, dt)
+    v_magnitude = np.sqrt(vx**2 + vy**2)
+    
+    # Accélération
+    acceleration = np.gradient(v_magnitude, dt)
+    
+    # Forces
+    F_gravity_component = mass_kg * g * np.sin(angle_rad)  # Composante motrice
+    F_normal = mass_kg * g * np.cos(angle_rad)  # Force normale
+    F_resistance = mass_kg * np.abs(acceleration)  # Force de résistance totale
+    
+    # Coefficients de friction
+    mu_kinetic = F_resistance / F_normal  # Coefficient de friction cinétique
+    mu_rolling = mu_kinetic - np.tan(angle_rad)  # Coefficient de roulement pur
+    
+    # Vitesses initiales et finales
+    n_avg = min(3, len(v_magnitude)//4)
+    v0 = np.mean(v_magnitude[:n_avg]) if len(v_magnitude) >= n_avg else v_magnitude[0]
+    vf = np.mean(v_magnitude[-n_avg:]) if len(v_magnitude) >= n_avg else v_magnitude[-1]
+    
+    # Distance totale
+    distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
+    total_distance = np.sum(distances)
+    
+    # Krr traditionnel
+    krr = (v0**2 - vf**2) / (2 * g * total_distance) if total_distance > 0 and v0 > vf else None
+    
+    # Analyse énergétique
+    E_kinetic_initial = 0.5 * mass_kg * v0**2
+    E_kinetic_final = 0.5 * mass_kg * vf**2
+    E_potential_lost = mass_kg * g * total_distance * np.sin(angle_rad)
+    E_dissipated = E_kinetic_initial - E_kinetic_final - E_potential_lost
+    
+    # Coefficient de friction énergétique
+    mu_energetic = E_dissipated / (F_normal * total_distance) if total_distance > 0 else None
+    
+    return {
+        # Coefficients de friction
+        'mu_kinetic_avg': np.mean(mu_kinetic),
+        'mu_kinetic_max': np.max(mu_kinetic),
+        'mu_kinetic_min': np.min(mu_kinetic),
+        'mu_rolling_avg': np.mean(mu_rolling),
+        'mu_energetic': mu_energetic,
+        
+        # Krr et paramètres traditionnels
+        'krr': krr,
+        'v0': v0,
+        'vf': vf,
+        'total_distance': total_distance,
+        
+        # Forces
+        'F_resistance_avg': np.mean(F_resistance),
+        'F_normal': F_normal,
+        'F_gravity_component': F_gravity_component,
+        
+        # Énergies
+        'E_dissipated': E_dissipated,
+        'energy_efficiency': (E_kinetic_final / E_kinetic_initial * 100) if E_kinetic_initial > 0 else 0,
+        
+        # Séries temporelles pour graphiques
+        'time': np.arange(len(df_valid)) * dt,
+        'mu_kinetic_series': mu_kinetic,
+        'mu_rolling_series': mu_rolling,
+        'velocity': v_magnitude,
+        'acceleration': acceleration,
+        'F_resistance_series': F_resistance
+    }
+
+def analyze_trace_friction(depth_mm, width_mm, length_mm, sphere_radius_mm, sphere_mass_g):
+    """
+    Analyse la friction à partir des dimensions de la trace laissée
+    """
+    # Volume déplacé
+    volume_displaced = depth_mm * width_mm * length_mm  # mm³
+    
+    # Ratio de pénétration δ/R
+    penetration_ratio = depth_mm / sphere_radius_mm
+    
+    # Énergie de déformation (approximation)
+    deformation_energy = volume_displaced * penetration_ratio
+    
+    # Coefficient de friction apparent basé sur la géométrie
+    friction_index = (depth_mm * width_mm) / (sphere_radius_mm ** 2)
+    
+    return {
+        'volume_displaced_mm3': volume_displaced,
+        'penetration_ratio': penetration_ratio,
+        'deformation_energy_index': deformation_energy,
+        'friction_geometric_index': friction_index,
+        'width_to_diameter_ratio': width_mm / (2 * sphere_radius_mm)
+    }
+
+# Page configuration
+st.set_page_config(
+    page_title="Sphere Rolling Resistance Analysis",
+    page_icon="⚪",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Initialize session state for multi-experiment comparison
+if 'experiments' not in st.session_state:
+    st.session_state.experiments = {}
+
+# Custom CSS
+st.markdown("""
+<style>
+    .upload-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+        margin: 1rem 0;
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin: 0.5rem 0;
+    }
+    .section-header {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 5px;
+        border-left: 4px solid #ff6b6b;
+        margin: 1rem 0;
+    }
+    .friction-card {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        padding: 1.5rem;
+        border-radius: 10px;
+        color: white;
+        margin: 0.5rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Function to load data
+@st.cache_data
+def load_uploaded_data(uploaded_file):
+    """Loads data from uploaded file"""
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
+        
+        # Check required columns
+        required_columns = ['Frame', 'X_center', 'Y_center', 'Radius']
+        if not all(col in df.columns for col in required_columns):
+            st.error(f"❌ File must contain columns: {required_columns}")
+            st.error(f"📊 Found columns: {list(df.columns)}")
+            return None, None
+        
+        # Filter valid detections
+        df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+        
+        return df, df_valid
+    return None, None
+
+# Function to create sample data
+def create_sample_data():
+    """Creates sample data for demonstration"""
+    frames = list(range(1, 108))
+    data = []
+    
+    for frame in frames:
+        if frame < 9:
+            data.append([frame, 0, 0, 0])
+        elif frame in [30, 31]:
+            data.append([frame, 0, 0, 0])
+        else:
+            x = 1240 - (frame - 9) * 12 + np.random.normal(0, 2)
+            y = 680 + (frame - 9) * 0.5 + np.random.normal(0, 3)
+            radius = 20 + np.random.normal(5, 3)
+            radius = max(18, min(35, radius))
+            data.append([frame, max(0, x), max(0, y), max(0, radius)])
+    
+    return pd.DataFrame(data, columns=['Frame', 'X_center', 'Y_center', 'Radius'])
+
+# Main title
+st.markdown("""
+# ⚪ Sphere Rolling Resistance Analysis Platform
+## 🔬 Complete Analysis Suite for Granular Mechanics Research with Friction Analysis
+*Upload your data and access our 3 specialized analysis tools + NEW Friction Analysis*
+""")
+
+# File upload section
+st.markdown("""
+<div class="upload-section">
+    <h2>📂 Upload Your Experimental Data</h2>
+    <p>Start by uploading your CSV file with detection results to get a personalized analysis</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Experiment metadata input
+col1, col2, col3 = st.columns(3)
+with col1:
+    experiment_name = st.text_input("Experiment Name", value="Experiment_1")
+with col2:
+    water_content = st.number_input("Water Content (%)", value=0.0, min_value=0.0, max_value=30.0)
+with col3:
+    sphere_type = st.selectbox("Sphere Type", ["Steel", "Plastic", "Glass", "Other"])
+
+# File upload
+uploaded_file = st.file_uploader(
+    "Choose your CSV file with detection data", 
+    type=['csv'],
+    help="Upload a CSV file with columns: Frame, X_center, Y_center, Radius"
+)
+
+# Global variables for data
+df = None
+df_valid = None
+
+# Load data
+if uploaded_file is not None:
+    df, df_valid = load_uploaded_data(uploaded_file)
+    if df is not None:
+        st.success(f"✅ File loaded successfully! {len(df)} frames detected")
+else:
+    # Option to use sample data
+    if st.button("🔬 Use sample data for demonstration"):
+        df = create_sample_data()
+        df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+        st.info("📊 Sample data loaded - you can now explore the features")
+
+# Navigation only if data is loaded
+if df is not None:
+    
+    # Quick data overview
+    st.markdown("### 📊 Overview of Your Data")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>{len(df)}</h3>
+            <p>Total Frames</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>{len(df_valid)}</h3>
+            <p>Valid Detections</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col3:
+        success_rate = len(df_valid) / len(df) * 100 if len(df) > 0 else 0
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>{success_rate:.1f}%</h3>
+            <p>Success Rate</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col4:
+        avg_radius = df_valid['Radius'].mean() if len(df_valid) > 0 else 0
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>{avg_radius:.1f} px</h3>
+            <p>Average Radius</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Navigation between analysis types
+    st.markdown("---")
+    st.markdown("## 🔧 Choose Your Analysis")
+    
+    # Sidebar for navigation
+    st.sidebar.title("🧭 Navigation")
+    analysis_type = st.sidebar.selectbox("Select analysis type:", [
+        "📈 Code 1: Trajectory Visualization",
+        "📊 Code 2: Krr Analysis", 
+        "🔬 Code 3: Complete Analysis + Friction",
+        "📋 Data Overview"
+    ])
+    
+    # === CODE 3: COMPLETE ANALYSIS WITH FRICTION ===
+    if analysis_type == "🔬 Code 3: Complete Analysis + Friction":
+        st.markdown("""
+        <div class="section-header">
+            <h2>🔬 Code 3: Complete Kinematic + Friction Analysis</h2>
+            <p>In-depth analysis with advanced metrics and grain-sphere friction coefficients</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Data verification
+        st.markdown("### 🔍 Data Verification")
+        if len(df_valid) > 0:
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Valid data", f"{len(df_valid)} frames")
+                st.metric("Success rate", f"{len(df_valid)/len(df)*100:.1f}%")
+                
+            with col2:
+                radius_range = df_valid['Radius'].max() - df_valid['Radius'].min()
+                st.metric("Radius variation", f"{radius_range:.1f} px")
+                st.metric("First detection", f"Frame {df_valid['Frame'].min()}")
+                
+            with col3:
+                st.metric("Last detection", f"Frame {df_valid['Frame'].max()}")
+                duration_frames = df_valid['Frame'].max() - df_valid['Frame'].min()
+                st.metric("Tracking duration", f"{duration_frames} frames")
+            
+            # Parameters for analysis
+            st.markdown("### ⚙️ Analysis Parameters")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown("**Sphere Parameters**")
+                mass_g = st.number_input("Mass (g)", value=10.0, min_value=0.1, key="mass")
+                radius_mm = st.number_input("Radius (mm)", value=15.0, min_value=1.0, key="radius")
+                sphere_type_analysis = st.selectbox("Type", ["Solid", "Hollow"], key="sphere_type")
+                j_factor = 2/5 if sphere_type_analysis == "Solid" else 2/3
+                
+            with col2:
+                st.markdown("**Experimental Parameters**")
+                fps = st.number_input("FPS", value=250.0, min_value=1.0, key="fps")
+                angle_deg = st.number_input("Angle (°)", value=15.0, min_value=0.1, key="angle")
+                
+                # Automatic calibration
+                if len(df_valid) > 0:
+                    avg_radius_px = df_valid['Radius'].mean()
+                    auto_cal = avg_radius_px / radius_mm
+                    st.metric("Auto calibration", f"{auto_cal:.2f} px/mm")
+                    pixels_per_mm = auto_cal
+                
+            with col3:
+                st.markdown("**Data Processing**")
+                use_smoothing = st.checkbox("Data smoothing", value=True)
+                smooth_window = st.slider("Smoothing window", 3, 11, 5, step=2)
+                remove_outliers = st.checkbox("Remove outliers", value=True)
+            
+            # Launch analysis
+            if st.button("🚀 Launch Complete Analysis with Friction"):
+                
+                # Data preparation
+                t = np.arange(len(df_valid)) / fps
+                x_mm = df_valid['X_center'].values / pixels_per_mm
+                y_mm = df_valid['Y_center'].values / pixels_per_mm
+                x_m = x_mm / 1000
+                y_m = y_mm / 1000
+                
+                # Remove outliers if requested
+                if remove_outliers:
+                    def remove_outliers_1d(data, threshold=2):
+                        mean_val = np.mean(data)
+                        std_val = np.std(data)
+                        mask = np.abs(data - mean_val) < threshold * std_val
+                        return mask
+                    
+                    mask_x = remove_outliers_1d(x_m)
+                    mask_y = remove_outliers_1d(y_m)
+                    mask = mask_x & mask_y
+                    
+                    t = t[mask]
+                    x_m = x_m[mask]
+                    y_m = y_m[mask]
+                    x_mm = x_mm[mask]
+                    y_mm = y_mm[mask]
+                    
+                    st.info(f"🔧 Outliers removed: {np.sum(~mask)} points")
+                
+                # Calculate velocities with smoothing
+                dt = np.mean(np.diff(t)) if len(t) > 1 else 1/fps
+                
+                if use_smoothing and len(x_m) >= smooth_window:
+                    try:
+                        from scipy.signal import savgol_filter
+                        x_smooth = savgol_filter(x_m, smooth_window, 2)
+                        y_smooth = savgol_filter(y_m, smooth_window, 2)
+                        vx = np.gradient(x_smooth, dt)
+                        vy = np.gradient(y_smooth, dt)
+                        st.success(f"✅ Data smoothed with window {smooth_window}")
+                    except:
+                        vx = np.gradient(x_m, dt)
+                        vy = np.gradient(y_m, dt)
+                        st.warning("⚠️ Smoothing failed, using raw data")
+                else:
+                    vx = np.gradient(x_m, dt)
+                    vy = np.gradient(y_m, dt)
+                
+                v_magnitude = np.sqrt(vx**2 + vy**2)
+                acceleration = np.gradient(v_magnitude, dt)
+                
+                # Physical calculations
+                mass_kg = mass_g / 1000
+                radius_m = radius_mm / 1000
+                angle_rad = np.radians(angle_deg)
+                g = 9.81
+                
+                # === NEW: FRICTION ANALYSIS ===
+                st.markdown("### 🔥 Grain-Sphere Friction Analysis")
+                
+                friction_results = calculate_friction_coefficients(
+                    df_valid, 
+                    sphere_mass_g=mass_g,
+                    angle_deg=angle_deg,
+                    fps=fps,
+                    pixels_per_mm=pixels_per_mm
+                )
+                
+                if friction_results:
+                    # Display friction results in nice cards
+                    st.markdown("#### 📊 Friction Coefficients Results")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.markdown(f"""
+                        <div class="friction-card">
+                            <h4>🔥 μ Cinétique</h4>
+                            <h2>{friction_results['mu_kinetic_avg']:.4f}</h2>
+                            <p>Friction grain-sphère</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col2:
+                        st.markdown(f"""
+                        <div class="friction-card">
+                            <h4>🎯 μ Roulement</h4>
+                            <h2>{friction_results['mu_rolling_avg']:.4f}</h2>
+                            <p>Résistance pure au roulement</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col3:
+                        mu_energetic_val = friction_results['mu_energetic'] if friction_results['mu_energetic'] else 0
+                        st.markdown(f"""
+                        <div class="friction-card">
+                            <h4>⚡ μ Énergétique</h4>
+                            <h2>{mu_energetic_val:.4f}</h2>
+                            <p>Basé sur dissipation</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col4:
+                        krr_val = friction_results['krr'] if friction_results['krr'] else 0
+                        st.markdown(f"""
+                        <div class="friction-card">
+                            <h4>📊 Krr Coefficient</h4>
+                            <h2>{krr_val:.6f}</h2>
+                            <p>Référence littérature</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Force analysis
+                    st.markdown("#### ⚖️ Force Analysis")
+                    
+                    force_col1, force_col2, force_col3 = st.columns(3)
+                    
+                    with force_col1:
+                        st.metric("Force normale", f"{friction_results['F_normal']*1000:.2f} mN")
+                        st.caption("Composante perpendiculaire")
+                        
+                    with force_col2:
+                        st.metric("Force résistance moyenne", f"{friction_results['F_resistance_avg']*1000:.2f} mN")
+                        st.caption("Opposition au mouvement")
+                        
+                    with force_col3:
+                        st.metric("Force gravité (composante)", f"{friction_results['F_gravity_component']*1000:.2f} mN")
+                        st.caption("Force motrice")
+                    
+                    # Optional trace analysis
+                    st.markdown("#### 🛤️ Analyse de la Trace (Optionnel)")
+                    st.markdown("*Si vous avez mesuré la trace laissée par la sphère, entrez les dimensions :*")
+                    
+                    trace_col1, trace_col2, trace_col3 = st.columns(3)
+                    
+                    with trace_col1:
+                        depth_mm = st.number_input("Profondeur δ (mm)", value=0.0, min_value=0.0, key="depth")
+                        
+                    with trace_col2:
+                        width_mm = st.number_input("Largeur (mm)", value=0.0, min_value=0.0, key="width")
+                        
+                    with trace_col3:
+                        length_mm = st.number_input("Longueur (mm)", value=0.0, min_value=0.0, key="length")
+                    
+                    # Analyze trace if dimensions provided
+                    if depth_mm > 0 and width_mm > 0 and length_mm > 0:
+                        trace_results = analyze_trace_friction(
+                            depth_mm, width_mm, length_mm, radius_mm, mass_g
+                        )
+                        
+                        st.markdown("##### 📏 Résultats de l'Analyse de Trace")
+                        
+                        trace_res_col1, trace_res_col2, trace_res_col3 = st.columns(3)
+                        
+                        with trace_res_col1:
+                            st.metric("Ratio pénétration δ/R", f"{trace_results['penetration_ratio']:.3f}")
+                            st.metric("Volume déplacé", f"{trace_results['volume_displaced_mm3']:.1f} mm³")
+                            
+                        with trace_res_col2:
+                            st.metric("Indice friction géométrique", f"{trace_results['friction_geometric_index']:.3f}")
+                            st.metric("Indice énergie déformation", f"{trace_results['deformation_energy_index']:.1f}")
+                            
+                        with trace_res_col3:
+                            st.metric("Ratio largeur/diamètre", f"{trace_results['width_to_diameter_ratio']:.3f}")
+                            
+                            # Literature comparison
+                            if trace_results['penetration_ratio'] < 0.1:
+                                st.success("✅ Faible pénétration (sol dur)")
+                            elif trace_results['penetration_ratio'] < 0.3:
+                                st.info("ℹ️ Pénétration modérée")
+                            else:
+                                st.warning("⚠️ Forte pénétration (sol mou)")
+                        
+                        # Comparison with Darbois Texier (2018)
+                        st.markdown("##### 🔬 Comparaison avec la Littérature")
+                        
+                        # Assume granular density ~1500 kg/m³, sphere density from mass and volume
+                        sphere_volume = (4/3) * np.pi * (radius_mm/1000)**3
+                        sphere_density = (mass_g/1000) / sphere_volume
+                        granular_density = 1500  # kg/m³, typical for sand
+                        density_ratio = sphere_density / granular_density
+                        
+                        # Darbois Texier relationship: δ/R ∝ (ρs/ρg)^0.75
+                        expected_penetration = 0.1 * (density_ratio**0.75)  # Rough estimation
+                        
+                        col_lit1, col_lit2 = st.columns(2)
+                        
+                        with col_lit1:
+                            st.metric("δ/R mesuré", f"{trace_results['penetration_ratio']:.3f}")
+                            st.metric("Densité sphère", f"{sphere_density:.0f} kg/m³")
+                            
+                        with col_lit2:
+                            st.metric("δ/R attendu (Darbois Texier)", f"{expected_penetration:.3f}")
+                            st.metric("Ratio ρs/ρg", f"{density_ratio:.2f}")
+                    
+                    # Advanced visualizations with friction
+                    st.markdown("### 📈 Visualisations Avancées avec Analyse de Friction")
+                    
+                    # Create comprehensive plot
+                    fig_friction = make_subplots(
+                        rows=3, cols=2,
+                        subplot_titles=(
+                            'Vitesse vs Temps', 'Coefficients de Friction vs Temps',
+                            'Forces vs Temps', 'Énergie Dissipée vs Temps',
+                            'Comparaison des Coefficients', 'Corrélation Force-Vitesse'
+                        ),
+                        vertical_spacing=0.08
+                    )
+                    
+                    # 1. Velocity
+                    fig_friction.add_trace(
+                        go.Scatter(x=friction_results['time'], y=friction_results['velocity']*1000,
+                                  mode='lines', name='Vitesse',
+                                  line=dict(color='blue', width=2)),
+                        row=1, col=1
+                    )
+                    
+                    # 2. Friction coefficients
+                    fig_friction.add_trace(
+                        go.Scatter(x=friction_results['time'], y=friction_results['mu_kinetic_series'],
+                                  mode='lines', name='μ cinétique',
+                                  line=dict(color='red', width=2)),
+                        row=1, col=2
+                    )
+                    fig_friction.add_trace(
+                        go.Scatter(x=friction_results['time'], y=friction_results['mu_rolling_series'],
+                                  mode='lines', name='μ roulement',
+                                  line=dict(color='orange', width=2)),
+                        row=1, col=2
+                    )
+                    
+                    # 3. Forces
+                    fig_friction.add_trace(
+                        go.Scatter(x=friction_results['time'], y=friction_results['F_resistance_series']*1000,
+                                  mode='lines', name='F résistance',
+                                  line=dict(color='darkred', width=2)),
+                        row=2, col=1
+                    )
+                    fig_friction.add_hline(y=friction_results['F_normal']*1000, 
+                                          line_dash="dash", line_color="green", row=2, col=1)
+                    
+                    # 4. Energy (kinetic energy evolution)
+                    E_kinetic = 0.5 * mass_kg * friction_results['velocity']**2
+                    fig_friction.add_trace(
+                        go.Scatter(x=friction_results['time'], y=E_kinetic*1000,
+                                  mode='lines', name='Énergie cinétique',
+                                  line=dict(color='purple', width=2)),
+                        row=2, col=2
+                    )
+                    
+                    # 5. Friction coefficients comparison (bar chart)
+                    friction_types = ['μ cinétique', 'μ roulement', 'μ énergétique', 'Krr']
+                    friction_values = [
+                        friction_results['mu_kinetic_avg'],
+                        friction_results['mu_rolling_avg'],
+                        mu_energetic_val,
+                        krr_val
+                    ]
+                    
+                    fig_friction.add_trace(
+                        go.Bar(x=friction_types, y=friction_values,
+                               marker_color=['red', 'orange', 'green', 'blue'],
+                               name='Coefficients'),
+                        row=3, col=1
+                    )
+                    
+                    # 6. Force vs Velocity correlation
+                    fig_friction.add_trace(
+                        go.Scatter(x=friction_results['velocity']*1000, 
+                                  y=friction_results['F_resistance_series']*1000,
+                                  mode='markers', name='F vs v',
+                                  marker=dict(color='darkblue', size=6, opacity=0.7)),
+                        row=3, col=2
+                    )
+                    
+                    # Update axes labels
+                    fig_friction.update_xaxes(title_text="Temps (s)", row=1, col=1)
+                    fig_friction.update_xaxes(title_text="Temps (s)", row=1, col=2)
+                    fig_friction.update_xaxes(title_text="Temps (s)", row=2, col=1)
+                    fig_friction.update_xaxes(title_text="Temps (s)", row=2, col=2)
+                    fig_friction.update_xaxes(title_text="Type de coefficient", row=3, col=1)
+                    fig_friction.update_xaxes(title_text="Vitesse (mm/s)", row=3, col=2)
+                    
+                    fig_friction.update_yaxes(title_text="Vitesse (mm/s)", row=1, col=1)
+                    fig_friction.update_yaxes(title_text="Coefficient de friction", row=1, col=2)
+                    fig_friction.update_yaxes(title_text="Force (mN)", row=2, col=1)
+                    fig_friction.update_yaxes(title_text="Énergie (mJ)", row=2, col=2)
+                    fig_friction.update_yaxes(title_text="Valeur", row=3, col=1)
+                    fig_friction.update_yaxes(title_text="Force résistance (mN)", row=3, col=2)
+                    
+                    fig_friction.update_layout(height=900, showlegend=False,
+                                             title_text="Analyse Complète de la Friction Grain-Sphère")
+                    
+                    st.plotly_chart(fig_friction, use_container_width=True)
+                    
+                    # Physical insights
+                    st.markdown("### 🧠 Interprétation Physique")
+                    
+                    insights_col1, insights_col2 = st.columns(2)
+                    
+                    with insights_col1:
+                        st.markdown("#### 🔍 Analyse des Coefficients")
+                        
+                        if friction_results['mu_kinetic_avg'] > 0.1:
+                            st.warning("⚠️ Friction élevée - substrat très résistant")
+                        elif friction_results['mu_kinetic_avg'] > 0.05:
+                            st.info("ℹ️ Friction modérée - cohérent avec littérature")
+                        else:
+                            st.success("✅ Friction faible - roulement efficace")
+                        
+                        # Compare with Van Wal (2017)
+                        if krr_val:
+                            if 0.03 <= krr_val <= 0.10:
+                                st.success("✅ Krr cohérent avec Van Wal (2017)")
+                            else:
+                                st.warning("⚠️ Krr différent de la littérature")
+                    
+                    with insights_col2:
+                        st.markdown("#### 💡 Effet de l'Humidité Attendu")
+                        
+                        st.markdown(f"""
+                        **Teneur en eau actuelle :** {water_content}%
+                        
+                        **Effets physiques attendus :**
+                        - 💧 **0-5%** : Friction minimale (grains secs)
+                        - 🌊 **5-15%** : Augmentation (ponts capillaires)
+                        - 🌧️ **15-25%** : Maximum puis diminution (lubrification)
+                        
+                        **Votre résultat μ = {friction_results['mu_kinetic_avg']:.4f}**
+                        """)
+                    
+                    # Export enhanced data
+                    st.markdown("### 💾 Export des Données Complètes")
+                    
+                    # Create comprehensive export data
+                    export_data = pd.DataFrame({
+                        'time_s': friction_results['time'],
+                        'x_mm': x_mm[:len(friction_results['time'])],
+                        'y_mm': y_mm[:len(friction_results['time'])],
+                        'velocity_ms': friction_results['velocity'],
+                        'acceleration_ms2': friction_results['acceleration'],
+                        'mu_kinetic': friction_results['mu_kinetic_series'],
+                        'mu_rolling': friction_results['mu_rolling_series'],
+                        'F_resistance_N': friction_results['F_resistance_series'],
+                        'F_normal_N': [friction_results['F_normal']] * len(friction_results['time']),
+                        'energy_kinetic_J': 0.5 * mass_kg * friction_results['velocity']**2,
+                        'water_content_percent': [water_content] * len(friction_results['time']),
+                        'sphere_type': [sphere_type] * len(friction_results['time'])
+                    })
+                    
+                    # Summary statistics
+                    summary_stats = {
+                        'experiment_name': experiment_name,
+                        'water_content': water_content,
+                        'sphere_type': sphere_type,
+                        'sphere_mass_g': mass_g,
+                        'sphere_radius_mm': radius_mm,
+                        'angle_deg': angle_deg,
+                        'mu_kinetic_avg': friction_results['mu_kinetic_avg'],
+                        'mu_kinetic_std': np.std(friction_results['mu_kinetic_series']),
+                        'mu_rolling_avg': friction_results['mu_rolling_avg'],
+                        'mu_energetic': mu_energetic_val,
+                        'krr': krr_val,
+                        'F_normal_mN': friction_results['F_normal'] * 1000,
+                        'F_resistance_avg_mN': friction_results['F_resistance_avg'] * 1000,
+                        'energy_dissipated_mJ': friction_results['E_dissipated'] * 1000,
+                        'energy_efficiency_percent': friction_results['energy_efficiency'],
+                        'total_distance_mm': friction_results['total_distance'] * 1000,
+                        'duration_s': friction_results['time'][-1] - friction_results['time'][0]
+                    }
+                    
+                    # Add trace data if available
+                    if depth_mm > 0:
+                        summary_stats.update({
+                            'trace_depth_mm': depth_mm,
+                            'trace_width_mm': width_mm,
+                            'trace_length_mm': length_mm,
+                            'penetration_ratio': trace_results['penetration_ratio'],
+                            'friction_geometric_index': trace_results['friction_geometric_index']
+                        })
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        csv_detailed = export_data.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Données temporelles complètes (CSV)",
+                            data=csv_detailed,
+                            file_name=f"friction_analysis_{experiment_name}_{water_content}pct.csv",
+                            mime="text/csv"
+                        )
+                    
+                    with col2:
+                        summary_df = pd.DataFrame([summary_stats])
+                        csv_summary = summary_df.to_csv(index=False)
+                        st.download_button(
+                            label="📊 Résumé des coefficients (CSV)",
+                            data=csv_summary,
+                            file_name=f"friction_summary_{experiment_name}.csv",
+                            mime="text/csv"
+                        )
+                    
+                    with col3:
+                        # Create a report
+                        report_text = f"""
+# Rapport d'Analyse de Friction - {experiment_name}
+
+## Paramètres Expérimentaux
+- Teneur en eau: {water_content}%
+- Type de sphère: {sphere_type}
+- Masse: {mass_g}g
+- Rayon: {radius_mm}mm
+- Angle: {angle_deg}°
+
+## Résultats Friction
+- μ cinétique moyen: {friction_results['mu_kinetic_avg']:.4f}
+- μ roulement moyen: {friction_results['mu_rolling_avg']:.4f}
+- μ énergétique: {mu_energetic_val:.4f}
+- Krr: {krr_val:.6f}
+
+## Forces
+- Force normale: {friction_results['F_normal']*1000:.2f} mN
+- Force résistance moyenne: {friction_results['F_resistance_avg']*1000:.2f} mN
+
+## Énergie
+- Énergie dissipée: {friction_results['E_dissipated']*1000:.2f} mJ
+- Efficacité énergétique: {friction_results['energy_efficiency']:.1f}%
+
+## Cinématique
+- Vitesse initiale: {friction_results['v0']*1000:.2f} mm/s
+- Vitesse finale: {friction_results['vf']*1000:.2f} mm/s
+- Distance totale: {friction_results['total_distance']*1000:.2f} mm
+
+{"## Analyse de Trace" if depth_mm > 0 else ""}
+{f"- Profondeur δ: {depth_mm} mm" if depth_mm > 0 else ""}
+{f"- Ratio δ/R: {trace_results['penetration_ratio']:.3f}" if depth_mm > 0 else ""}
+{f"- Volume déplacé: {trace_results['volume_displaced_mm3']:.1f} mm³" if depth_mm > 0 else ""}
+                        """
+                        
+                        st.download_button(
+                            label="📄 Rapport complet (TXT)",
+                            data=report_text,
+                            file_name=f"rapport_friction_{experiment_name}.txt",
+                            mime="text/plain"
+                        )
+                
+                else:
+                    st.error("❌ Échec du calcul des coefficients de friction")
+        
+        else:
+            st.error("❌ Pas assez de données valides pour l'analyse")
+    
+    # === OTHER ANALYSIS TYPES (SIMPLIFIED VERSIONS) ===
+    elif analysis_type == "📈 Code 1: Trajectory Visualization":
+        st.markdown("### 📈 Trajectory Visualization")
+        st.info("📝 Code 1 disponible - visualisation des trajectoires et détection")
+        
+        if len(df_valid) > 0:
+            fig = px.scatter(df_valid, x='X_center', y='Y_center', 
+                           color='Frame', size='Radius',
+                           title="Trajectory of the Sphere")
+            fig.update_yaxes(autorange="reversed")
+            st.plotly_chart(fig, use_container_width=True)
+    
+    elif analysis_type == "📊 Code 2: Krr Analysis":
+        st.markdown("### 📊 Krr Analysis")
+        st.info("📝 Code 2 disponible - calcul du coefficient Krr")
+        
+        if len(df_valid) > 10:
+            # Basic Krr calculation
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                mass_g = st.number_input("Mass (g)", value=10.0, key="krr_mass")
+                angle_deg = st.number_input("Angle (°)", value=15.0, key="krr_angle")
+                fps = st.number_input("FPS", value=250.0, key="krr_fps")
+                
+            with col2:
+                pixels_per_mm = st.number_input("Calibration (px/mm)", value=5.0, key="krr_cal")
+                
+            if st.button("Calculate Krr"):
+                # Simple Krr calculation
+                dt = 1 / fps
+                x_m = df_valid['X_center'].values / pixels_per_mm / 1000
+                y_m = df_valid['Y_center'].values / pixels_per_mm / 1000
+                
+                vx = np.gradient(x_m, dt)
+                vy = np.gradient(y_m, dt)
+                v_magnitude = np.sqrt(vx**2 + vy**2)
+                
+                v0 = v_magnitude[0]
+                vf = v_magnitude[-1]
+                
+                distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
+                total_distance = np.sum(distances)
+                
+                g = 9.81
+                krr = (v0**2 - vf**2) / (2 * g * total_distance) if total_distance > 0 else 0
+                
+                st.metric("Krr Coefficient", f"{krr:.6f}")
+                st.metric("Initial Velocity", f"{v0*1000:.2f} mm/s")
+                st.metric("Final Velocity", f"{vf*1000:.2f} mm/s")
+    
+    elif analysis_type == "📋 Data Overview":
+        st.markdown("### 📋 Data Overview")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### First 10 rows")
+            st.dataframe(df.head(10))
+            
+        with col2:
+            st.markdown("#### Statistics")
+            st.dataframe(df_valid.describe())
+
+else:
+    # Message if no data is loaded
+    st.markdown("""
+    ## 🚀 Pour commencer:
+    
+    1. **📂 Téléchargez votre fichier CSV** avec vos données expérimentales
+    2. **Ou cliquez "Use sample data for demonstration"** pour explorer les fonctionnalités
+    3. **🔧 Choisissez l'analyse** qui vous intéresse dans le menu
+    
+    ### 📋 Format de fichier attendu:
+    Votre CSV doit contenir les colonnes suivantes:
+    - `Frame`: Numéro d'image
+    - `X_center`: Position X du centre de la sphère
+    - `Y_center`: Position Y du centre de la sphère  
+    - `Radius`: Rayon détecté de la sphère
+    
+    ### 🔧 Les 3 Codes Intégrés + Nouveau:
+    - **Code 1**: Visualisation des trajectoires
+    - **Code 2**: Analyse Krr (coefficient de résistance)
+    - **Code 3**: Analyse complète et avancée
+    - **🔥 NOUVEAU**: **Analyse de friction grain-sphère**
+    
+    ### 🔬 Nouvelle Fonctionnalité Friction:
+    - **μ cinétique**: Coefficient de friction cinétique grain-sphère
+    - **μ roulement**: Coefficient de résistance au roulement pur
+    - **μ énergétique**: Basé sur la dissipation d'énergie
+    - **Analyse de trace**: δ/R, volume déplacé, indices géométriques
+    - **Comparaison littérature**: Van Wal (2017), Darbois Texier (2018)
+    """)
+
+# Footer
+st.markdown("---")
+st.markdown("""
+### 🎓 Sphere Rolling Resistance Analysis Platform with Friction Analysis
+*Développé pour analyser la résistance au roulement des sphères sur matériau granulaire humide*
+
+**🔥 NOUVEAU**: Calcul direct des coefficients de friction grain-sphère à partir de vos données vidéo
+""")
+
+# Sidebar information
+st.sidebar.markdown("---")
+st.sidebar.markdown("""
+### 📊 Informations Projet
+- **Images traitées:** 107
+- **Taux de succès:** 76.6%
+- **Méthode:** Vision par ordinateur
+- **Type recherche:** Physique expérimentale
+
+### 🔥 Nouvelle Analyse Friction
+- **μ cinétique**: Friction grain-sphère
+- **μ roulement**: Résistance pure
+- **μ énergétique**: Dissipation d'énergie
+- **Analyse trace**: δ/R, géométrie
+""")
+
+st.sidebar.markdown("""
+### 🎓 Contexte Recherche
+**Institution:** Département Cosmic Earth Science, Université d'Osaka  
+**Domaine:** Mécanique granulaire  
+**Innovation:** Première étude humidité + friction directe  
+**Impact:** Applications géotechniques  
+""")
+
+if water_content > 0:
+    st.sidebar.markdown(f"""
+    ### 💧 Conditions Actuelles
+    **Teneur en eau:** {water_content}%
+    **Type sphère:** {sphere_type}
+    **Expérience:** {experiment_name}
+    """)
+
+def analyze_trace_friction(depth_mm, width_mm, length_mm, sphere_radius_mm, sphere_mass_g):
+    """
+    Analyse la friction à partir des dimensions de la trace laissée
+    """
+    # [Copiez toute la fonction du code que j'ai créé]
     # Convert to real units
     dt = 1 / fps
     mass_kg = sphere_mass_g / 1000
