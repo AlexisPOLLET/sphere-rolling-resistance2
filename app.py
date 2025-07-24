@@ -1808,113 +1808,114 @@ Distance totale: {friction_results['total_distance']*1000:.2f} mm
         
         st.markdown("</div></div>", unsafe_allow_html=True)
     
-    # ===== MULTI-EXPERIMENT COMPARISON =====
-    elif analysis_type == "🔍 Comparaison Multi-Expériences":
-        st.markdown("# 🔍 Comparaison Multi-Expériences")
+# Remplacez cette partie dans la section "Comparaison Multi-Expériences" :
+
+elif analysis_type == "🔍 Comparaison Multi-Expériences":
+    st.markdown("# 🔍 Comparaison Multi-Expériences")
+    
+    if not st.session_state.experiments:
+        st.warning("⚠️ Aucune expérience disponible pour comparaison.")
         
-        if not st.session_state.experiments:
-            st.warning("⚠️ Aucune expérience disponible pour comparaison.")
+        if st.button("📊 Charger des expériences d'exemple"):
+            water_contents = [0, 5, 10, 15, 20]
+            for w in water_contents:
+                df_sample, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
+                st.session_state.experiments[f"Sample_W{w}%"] = {
+                    'data': df_sample,
+                    'metadata': metadata
+                }
+            st.success("✅ Expériences d'exemple chargées!")
+            st.rerun()
+    else:
+        # Show available experiments
+        st.markdown("### 📋 Expériences Disponibles")
+        
+        exp_data = []
+        for name, exp in st.session_state.experiments.items():
+            meta = exp['metadata']
+            exp_data.append({
+                'Expérience': name,
+                'Teneur en Eau (%)': meta['water_content'],
+                'Type de Sphère': meta['sphere_type'],
+                'Taux de Succès (%)': f"{meta['success_rate']:.1f}",
+                'Détections Valides': meta['valid_detections'],
+                'Date': meta['date']
+            })
+        
+        exp_df = pd.DataFrame(exp_data)
+        st.dataframe(exp_df, use_container_width=True)
+        
+        # Comparison interface - CORRECTION ICI
+        selected_experiments = st.multiselect(
+            "Choisissez les expériences pour comparaison:",
+            options=list(st.session_state.experiments.keys()),
+            default=list(st.session_state.experiments.keys())[:min(4, len(st.session_state.experiments))]
+        )
+        
+        if len(selected_experiments) >= 2:
+            comparison_data = []
             
-            if st.button("📊 Charger des expériences d'exemple"):
-                water_contents = [0, 5, 10, 15, 20]
-                for w in water_contents:
-                    df_sample, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
-                    st.session_state.experiments[f"Sample_W{w}%"] = {
-                        'data': df_sample,
-                        'metadata': metadata
-                    }
-                st.success("✅ Expériences d'exemple chargées!")
-                st.rerun()
-        else:
-            # Show available experiments
-            st.markdown("### 📋 Expériences Disponibles")
-            
-            exp_data = []
-            for name, exp in st.session_state.experiments.items():
+            for exp_name in selected_experiments:
+                exp = st.session_state.experiments[exp_name]
+                df_exp = exp['data']
                 meta = exp['metadata']
-                exp_data.append({
-                    'Expérience': name,
-                    'Teneur en Eau (%)': meta['water_content'],
-                    'Type de Sphère': meta['sphere_type'],
-                    'Taux de Succès (%)': f"{meta['success_rate']:.1f}",
-                    'Détections Valides': meta['valid_detections'],
-                    'Date': meta['date']
+                df_exp_valid = df_exp[(df_exp['X_center'] != 0) & (df_exp['Y_center'] != 0) & (df_exp['Radius'] != 0)]
+                
+                metrics = calculate_advanced_metrics(df_exp_valid)
+                
+                comparison_data.append({
+                    'Expérience': exp_name,
+                    'Water_Content': meta['water_content'],
+                    'Sphere_Type': meta['sphere_type'],
+                    'Success_Rate': meta['success_rate'],
+                    'Krr': metrics['krr'] if metrics else None,
+                    'Max_Velocity': metrics['max_velocity'] if metrics else None,
+                    'Energy_Efficiency': metrics['energy_efficiency'] if metrics else None,
+                    'Trajectory_Efficiency': metrics['trajectory_efficiency'] if metrics else None,
                 })
             
-            exp_df = pd.DataFrame(exp_data)
-            st.dataframe(exp_df, use_container_width=True)
+            comp_df = pd.DataFrame(comparison_data)
             
-            # Comparison interface
-                            selected_experiments = st.multiselect(
-                "Choisissez les expériences pour comparaison:",
-                options=list(st.session_state.experiments.keys()),
-                default=list(st.session_state.experiments.keys())[:min(4, len(st.session_state.experiments))]
+            # Visualization
+            st.markdown("### 📊 Analyses Comparatives")
+            
+            comp_col1, comp_col2 = st.columns(2)
+            
+            with comp_col1:
+                if comp_df['Krr'].notna().any():
+                    fig_krr = px.scatter(comp_df, x='Water_Content', y='Krr', 
+                                       color='Sphere_Type', size='Success_Rate',
+                                       hover_data=['Expérience'],
+                                       title="🔍 Krr vs Teneur en Eau")
+                    st.plotly_chart(fig_krr, use_container_width=True)
+            
+            with comp_col2:
+                fig_success = px.bar(comp_df, x='Expérience', y='Success_Rate',
+                                   color='Water_Content',
+                                   title="📈 Taux de Succès de Détection")
+                fig_success.update_xaxes(tickangle=45)
+                st.plotly_chart(fig_success, use_container_width=True)
+            
+            # Comparison table
+            st.markdown("### 📋 Tableau de Comparaison")
+            
+            display_comp = comp_df.copy()
+            if 'Krr' in display_comp.columns:
+                display_comp['Krr'] = display_comp['Krr'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else "N/A")
+            
+            st.dataframe(display_comp, use_container_width=True)
+            
+            # Export comparison
+            csv_comparison = comp_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Télécharger comparaison (CSV)",
+                data=csv_comparison,
+                file_name="comparaison_experiences.csv",
+                mime="text/csv"
             )
-            
-            if len(selected_experiments) >= 2:
-                comparison_data = []
-                
-                for exp_name in selected_experiments:
-                    exp = st.session_state.experiments[exp_name]
-                    df_exp = exp['data']
-                    meta = exp['metadata']
-                    df_exp_valid = df_exp[(df_exp['X_center'] != 0) & (df_exp['Y_center'] != 0) & (df_exp['Radius'] != 0)]
-                    
-                    metrics = calculate_advanced_metrics(df_exp_valid)
-                    
-                    comparison_data.append({
-                        'Expérience': exp_name,
-                        'Water_Content': meta['water_content'],
-                        'Sphere_Type': meta['sphere_type'],
-                        'Success_Rate': meta['success_rate'],
-                        'Krr': metrics['krr'] if metrics else None,
-                        'Max_Velocity': metrics['max_velocity'] if metrics else None,
-                        'Energy_Efficiency': metrics['energy_efficiency'] if metrics else None,
-                        'Trajectory_Efficiency': metrics['trajectory_efficiency'] if metrics else None,
-                    })
-                
-                comp_df = pd.DataFrame(comparison_data)
-                
-                # Visualization
-                st.markdown("### 📊 Analyses Comparatives")
-                
-                comp_col1, comp_col2 = st.columns(2)
-                
-                with comp_col1:
-                    if comp_df['Krr'].notna().any():
-                        fig_krr = px.scatter(comp_df, x='Water_Content', y='Krr', 
-                                           color='Sphere_Type', size='Success_Rate',
-                                           hover_data=['Expérience'],
-                                           title="🔍 Krr vs Teneur en Eau")
-                        st.plotly_chart(fig_krr, use_container_width=True)
-                
-                with comp_col2:
-                    fig_success = px.bar(comp_df, x='Expérience', y='Success_Rate',
-                                       color='Water_Content',
-                                       title="📈 Taux de Succès de Détection")
-                    fig_success.update_xaxes(tickangle=45)
-                    st.plotly_chart(fig_success, use_container_width=True)
-                
-                # Comparison table
-                st.markdown("### 📋 Tableau de Comparaison")
-                
-                display_comp = comp_df.copy()
-                if 'Krr' in display_comp.columns:
-                    display_comp['Krr'] = display_comp['Krr'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else "N/A")
-                
-                st.dataframe(display_comp, use_container_width=True)
-                
-                # Export comparison
-                csv_comparison = comp_df.to_csv(index=False)
-                st.download_button(
-                    label="📥 Télécharger comparaison (CSV)",
-                    data=csv_comparison,
-                    file_name="comparaison_experiences.csv",
-                    mime="text/csv"
-                )
-            
-            else:
-                st.info("Veuillez sélectionner au moins 2 expériences pour la comparaison")
+        
+        else:
+            st.info("Veuillez sélectionner au moins 2 expériences pour la comparaison")
     
     # ===== PREDICTION MODULE =====
     elif analysis_type == "🎯 Module de Prédiction":
