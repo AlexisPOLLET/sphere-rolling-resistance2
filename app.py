@@ -520,8 +520,6 @@ if (st.session_state.current_df is not None and
             st.warning("⚠️ Aucune détection valide dans les données chargées.")
     except Exception as e:
         st.error(f"❌ Erreur : {str(e)}")
-    df = st.session_state.current_df
-    df_valid = st.session_state.current_df_valid
     
     # Quick overview
     st.markdown("""
@@ -576,7 +574,6 @@ if (st.session_state.current_df_valid is not None and
         # ... votre code des sections d'analyse ...
     except Exception as e:
         st.error(f"❌ Erreur dans l'analyse : {str(e)}")
-    df_valid = st.session_state.current_df_valid
     
     # ===== CODE 1: TRAJECTORY VISUALIZATION =====
     if analysis_type == "📈 Code 1 : Visualisation de Trajectoire":
