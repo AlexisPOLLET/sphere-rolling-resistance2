@@ -508,7 +508,18 @@ with tab2:
         st.success("📊 Données d'exemple générées!")
 
 # Data overview (if data loaded)
-if st.session_state.current_df is not None and st.session_state.current_df_valid is not None:
+if (st.session_state.current_df is not None and 
+    st.session_state.current_df_valid is not None):
+    try:
+        df = st.session_state.current_df
+        df_valid = st.session_state.current_df_valid
+        
+        if len(df_valid) > 0:
+            # ... votre code existant ...
+        else:
+            st.warning("⚠️ Aucune détection valide dans les données chargées.")
+    except Exception as e:
+        st.error(f"❌ Erreur : {str(e)}")
     df = st.session_state.current_df
     df_valid = st.session_state.current_df_valid
     
@@ -557,7 +568,14 @@ if st.session_state.current_df is not None and st.session_state.current_df_valid
 
 # ==================== ANALYSIS SECTIONS ====================
 
-if st.session_state.current_df_valid is not None and len(st.session_state.current_df_valid) > 0:
+if (st.session_state.current_df_valid is not None and 
+    hasattr(st.session_state.current_df_valid, '__len__') and 
+    len(st.session_state.current_df_valid) > 0):
+    try:
+        df_valid = st.session_state.current_df_valid
+        # ... votre code des sections d'analyse ...
+    except Exception as e:
+        st.error(f"❌ Erreur dans l'analyse : {str(e)}")
     df_valid = st.session_state.current_df_valid
     
     # ===== CODE 1: TRAJECTORY VISUALIZATION =====
