@@ -1676,160 +1676,78 @@ Distance totale: {friction_results['total_distance']*1000:.2f} mm
         else:
             st.error("❌ Impossible de calculer les métriques - données insuffisantes")
     
-st.markdown("</div></div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
     
-    # ===== REPRODUCIBILITY ANALYSIS =====
-    elif analysis_type == "🔄 Analyse de Reproductibilité":
-        st.markdown("""
-        <div class="analysis-results">
-            <h2 class="results-header">🔄 Analyse de Reproductibilité et Détection d'Anomalies</h2>
-            <div class="results-content">
-        """, unsafe_allow_html=True)
-        
-        if not st.session_state.experiments:
-            st.warning("⚠️ Aucune expérience disponible pour l'analyse de reproductibilité.")
+        # ===== REPRODUCIBILITY ANALYSIS =====
+        elif analysis_type == "🔄 Analyse de Reproductibilité":
+            st.markdown("""
+            <div class="analysis-results">
+                <h2 class="results-header">🔄 Analyse de Reproductibilité et Détection d'Anomalies</h2>
+                <div class="results-content">
+            """, unsafe_allow_html=True)
             
-            if st.button("📊 Charger des expériences d'exemple avec répétitions"):
-                # Create sample experiments with repetitions
-                conditions = [
-                    (0, "Steel"), (10, "Steel"), (20, "Steel"),
-                    (0, "Plastic"), (10, "Plastic"), (20, "Plastic")
-                ]
+            if not st.session_state.experiments:
+                st.warning("⚠️ Aucune expérience disponible pour l'analyse de reproductibilité.")
                 
-                for water, material in conditions:
-                    # Create 3 repetitions for each condition
-                    for rep in range(1, 4):
-                        # Add some variation for realism
-                        variation = np.random.normal(0, 0.5)  # Small random variation
-                        df_sample, metadata = create_sample_data_with_metadata(
-                            f"{material}_W{water}%_Rep{rep}", 
-                            water + variation, 
-                            material
-                        )
-                        # Add noise to make some experiments anomalous
-                        if rep == 2 and water == 10:  # Make second repetition of 10% water anomalous
-                            # Modify data to create anomaly
-                            df_sample.loc[df_sample['X_center'] != 0, 'X_center'] *= 0.8
-                        
-                        st.session_state.experiments[f"{material}_W{water}%_Rep{rep}"] = {
-                            'data': df_sample,
-                            'metadata': metadata
-                        }
-                st.success("✅ Expériences d'exemple avec répétitions chargées!")
-                st.rerun()
-        else:
-            
-            # Group experiments by conditions
-            def group_experiments_by_conditions(experiments):
-                groups = {}
-                for exp_name, exp in experiments.items():
-                    meta = exp['metadata']
-                    # Create condition key (water content rounded to nearest 0.5, sphere type)
-                    water_key = round(meta['water_content'] * 2) / 2  # Round to nearest 0.5
-                    condition_key = f"{meta['sphere_type']}_W{water_key}%"
+                if st.button("📊 Charger des expériences d'exemple avec répétitions"):
+                    # Create sample experiments with repetitions
+                    conditions = [
+                        (0, "Steel"), (10, "Steel"), (20, "Steel"),
+                        (0, "Plastic"), (10, "Plastic"), (20, "Plastic")
+                    ]
                     
-                    if condition_key not in groups:
-                        groups[condition_key] = []
-                    
-                    groups[condition_key].append({
-                        'name': exp_name,
-                        'data': exp['data'],
-                        'metadata': meta
-                    })
-                
-                return groups
-            
-            # Detect anomalies using statistical methods
-            def detect_anomalies(group_data, threshold=2.0):
-                """Detect anomalies in a group of experiments using Z-score"""
-                if len(group_data) < 3:
-                    return []
-                
-                # Calculate metrics for each experiment
-                metrics_list = []
-                for exp in group_data:
-                    df_valid = exp['data'][(exp['data']['X_center'] != 0) & 
-                                          (exp['data']['Y_center'] != 0) & 
-                                          (exp['data']['Radius'] != 0)]
-                    
-                    if len(df_valid) > 10:
-                        metrics = calculate_advanced_metrics(df_valid)
-                        if metrics and metrics['krr'] is not None:
-                            metrics_list.append({
-                                'name': exp['name'],
-                                'krr': metrics['krr'],
-                                'max_velocity': metrics['max_velocity'],
-                                'energy_efficiency': metrics['energy_efficiency'],
-                                'trajectory_efficiency': metrics['trajectory_efficiency']
-                            })
-                
-                if len(metrics_list) < 3:
-                    return []
-                
-                # Calculate Z-scores for key metrics
-                anomalies = []
-                for metric_name in ['krr', 'max_velocity', 'energy_efficiency']:
-                    values = [m[metric_name] for m in metrics_list if m[metric_name] is not None]
-                    if len(values) >= 3:
-                        mean_val = np.mean(values)
-                        std_val = np.std(values)
-                        
-                        if std_val > 0:
-                            for i, m in enumerate(metrics_list):
-                                if m[metric_name] is not None:
-                                    z_score = abs((m[metric_name] - mean_val) / std_val)
-                                    if z_score > threshold:
-                                        anomalies.append({
-                                            'name': m['name'],
-                                            'metric': metric_name,
-                                            'value': m[metric_name],
-                                            'z_score': z_score,
-                                            'mean': mean_val,
-                                            'std': std_val
-                                        })
-                
-                return anomalies
-            
-            # Group experiments
-            groups = group_experiments_by_conditions(st.session_state.experiments)
-            
-            st.markdown("### 📊 Groupement par Conditions Expérimentales")
-            
-            # Show groups summary
-            group_summary = []
-            for condition, experiments in groups.items():
-                group_summary.append({
-                    'Condition': condition,
-                    'Nombre d\'expériences': len(experiments),
-                    'Expériences': ', '.join([exp['name'] for exp in experiments])
-                })
-            
-            group_df = pd.DataFrame(group_summary)
-            st.dataframe(group_df, use_container_width=True)
-            
-            # Select condition for detailed analysis
-            st.markdown("### 🎯 Sélection pour Analyse Détaillée")
-            
-            # Only show conditions with multiple experiments
-            multi_exp_conditions = {k: v for k, v in groups.items() if len(v) >= 2}
-            
-            if not multi_exp_conditions:
-                st.warning("⚠️ Aucune condition avec plusieurs expériences trouvée pour l'analyse de reproductibilité.")
+                    for water, material in conditions:
+                        # Create 3 repetitions for each condition
+                        for rep in range(1, 4):
+                            # Add some variation for realism
+                            variation = np.random.normal(0, 0.5)  # Small random variation
+                            df_sample, metadata = create_sample_data_with_metadata(
+                                f"{material}_W{water}%_Rep{rep}", 
+                                water + variation, 
+                                material
+                            )
+                            # Add noise to make some experiments anomalous
+                            if rep == 2 and water == 10:  # Make second repetition of 10% water anomalous
+                                # Modify data to create anomaly
+                                df_sample.loc[df_sample['X_center'] != 0, 'X_center'] *= 0.8
+                            
+                            st.session_state.experiments[f"{material}_W{water}%_Rep{rep}"] = {
+                                'data': df_sample,
+                                'metadata': metadata
+                            }
+                    st.success("✅ Expériences d'exemple avec répétitions chargées!")
+                    st.rerun()
             else:
-                selected_condition = st.selectbox(
-                    "Choisissez une condition à analyser:",
-                    options=list(multi_exp_conditions.keys())
-                )
                 
-                if selected_condition:
-                    condition_experiments = multi_exp_conditions[selected_condition]
+                # Group experiments by conditions
+                def group_experiments_by_conditions(experiments):
+                    groups = {}
+                    for exp_name, exp in experiments.items():
+                        meta = exp['metadata']
+                        # Create condition key (water content rounded to nearest 0.5, sphere type)
+                        water_key = round(meta['water_content'] * 2) / 2  # Round to nearest 0.5
+                        condition_key = f"{meta['sphere_type']}_W{water_key}%"
+                        
+                        if condition_key not in groups:
+                            groups[condition_key] = []
+                        
+                        groups[condition_key].append({
+                            'name': exp_name,
+                            'data': exp['data'],
+                            'metadata': meta
+                        })
                     
-                    st.markdown(f"### 🔍 Analyse de Reproductibilité - {selected_condition}")
+                    return groups
+                
+                # Detect anomalies using statistical methods
+                def detect_anomalies(group_data, threshold=2.0):
+                    """Detect anomalies in a group of experiments using Z-score"""
+                    if len(group_data) < 3:
+                        return []
                     
-                    # Calculate metrics for all experiments in the group
-                    experiment_metrics = []
-                    
-                    for exp in condition_experiments:
+                    # Calculate metrics for each experiment
+                    metrics_list = []
+                    for exp in group_data:
                         df_valid = exp['data'][(exp['data']['X_center'] != 0) & 
                                               (exp['data']['Y_center'] != 0) & 
                                               (exp['data']['Radius'] != 0)]
@@ -1837,186 +1755,268 @@ st.markdown("</div></div>", unsafe_allow_html=True)
                         if len(df_valid) > 10:
                             metrics = calculate_advanced_metrics(df_valid)
                             if metrics and metrics['krr'] is not None:
-                                experiment_metrics.append({
-                                    'Expérience': exp['name'],
-                                    'Krr': metrics['krr'],
-                                    'Vitesse_Max': metrics['max_velocity'],
-                                    'Efficacité_Énergie': metrics['energy_efficiency'],
-                                    'Efficacité_Trajectoire': metrics['trajectory_efficiency'],
-                                    'Distance': metrics['distance'],
-                                    'Durée': metrics['duration']
+                                metrics_list.append({
+                                    'name': exp['name'],
+                                    'krr': metrics['krr'],
+                                    'max_velocity': metrics['max_velocity'],
+                                    'energy_efficiency': metrics['energy_efficiency'],
+                                    'trajectory_efficiency': metrics['trajectory_efficiency']
                                 })
                     
-                    if len(experiment_metrics) < 2:
-                        st.error("❌ Pas assez d'expériences valides pour l'analyse de reproductibilité.")
-                    else:
-                        metrics_df = pd.DataFrame(experiment_metrics)
+                    if len(metrics_list) < 3:
+                        return []
+                    
+                    # Calculate Z-scores for key metrics
+                    anomalies = []
+                    for metric_name in ['krr', 'max_velocity', 'energy_efficiency']:
+                        values = [m[metric_name] for m in metrics_list if m[metric_name] is not None]
+                        if len(values) >= 3:
+                            mean_val = np.mean(values)
+                            std_val = np.std(values)
+                            
+                            if std_val > 0:
+                                for i, m in enumerate(metrics_list):
+                                    if m[metric_name] is not None:
+                                        z_score = abs((m[metric_name] - mean_val) / std_val)
+                                        if z_score > threshold:
+                                            anomalies.append({
+                                                'name': m['name'],
+                                                'metric': metric_name,
+                                                'value': m[metric_name],
+                                                'z_score': z_score,
+                                                'mean': mean_val,
+                                                'std': std_val
+                                            })
+                    
+                    return anomalies
+                
+                # Group experiments
+                groups = group_experiments_by_conditions(st.session_state.experiments)
+                
+                st.markdown("### 📊 Groupement par Conditions Expérimentales")
+                
+                # Show groups summary
+                group_summary = []
+                for condition, experiments in groups.items():
+                    group_summary.append({
+                        'Condition': condition,
+                        'Nombre d\'expériences': len(experiments),
+                        'Expériences': ', '.join([exp['name'] for exp in experiments])
+                    })
+                
+                group_df = pd.DataFrame(group_summary)
+                st.dataframe(group_df, use_container_width=True)
+                
+                # Select condition for detailed analysis
+                st.markdown("### 🎯 Sélection pour Analyse Détaillée")
+                
+                # Only show conditions with multiple experiments
+                multi_exp_conditions = {k: v for k, v in groups.items() if len(v) >= 2}
+                
+                if not multi_exp_conditions:
+                    st.warning("⚠️ Aucune condition avec plusieurs expériences trouvée pour l'analyse de reproductibilité.")
+                else:
+                    selected_condition = st.selectbox(
+                        "Choisissez une condition à analyser:",
+                        options=list(multi_exp_conditions.keys())
+                    )
+                    
+                    if selected_condition:
+                        condition_experiments = multi_exp_conditions[selected_condition]
                         
-                        # Detect anomalies
-                        anomalies = detect_anomalies(condition_experiments, threshold=2.0)
+                        st.markdown(f"### 🔍 Analyse de Reproductibilité - {selected_condition}")
                         
-                        st.markdown("#### 🚨 Détection d'Anomalies")
+                        # Calculate metrics for all experiments in the group
+                        experiment_metrics = []
                         
-                        if anomalies:
-                            st.markdown("**Anomalies détectées:**")
-                            for anomaly in anomalies:
-                                st.markdown(f"""
-                                <div class="status-warning">
-                                    ⚠️ <strong>{anomaly['name']}</strong> - {anomaly['metric']}: 
-                                    {anomaly['value']:.6f} (Z-score: {anomaly['z_score']:.2f})
-                                </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            st.markdown('<div class="status-success">✅ Aucune anomalie détectée</div>', unsafe_allow_html=True)
-                        
-                        # Show reproducibility statistics
-                        st.markdown("#### 📊 Statistiques de Reproductibilité")
-                        
-                        # Calculate reproducibility statistics
-                        repro_stats = []
-                        numeric_cols = ['Krr', 'Vitesse_Max', 'Efficacité_Énergie', 'Efficacité_Trajectoire']
-                        
-                        for col in numeric_cols:
-                            if col in metrics_df.columns:
-                                values = metrics_df[col].dropna()
-                                if len(values) > 0:
-                                    mean_val = values.mean()
-                                    std_val = values.std()
-                                    cv = (std_val / mean_val * 100) if mean_val != 0 else 0
-                                    
-                                    repro_stats.append({
-                                        'Paramètre': col,
-                                        'Moyenne': mean_val,
-                                        'Écart-type': std_val,
-                                        'CV (%)': cv,
-                                        'Min': values.min(),
-                                        'Max': values.max(),
-                                        'N': len(values)
+                        for exp in condition_experiments:
+                            df_valid = exp['data'][(exp['data']['X_center'] != 0) & 
+                                                  (exp['data']['Y_center'] != 0) & 
+                                                  (exp['data']['Radius'] != 0)]
+                            
+                            if len(df_valid) > 10:
+                                metrics = calculate_advanced_metrics(df_valid)
+                                if metrics and metrics['krr'] is not None:
+                                    experiment_metrics.append({
+                                        'Expérience': exp['name'],
+                                        'Krr': metrics['krr'],
+                                        'Vitesse_Max': metrics['max_velocity'],
+                                        'Efficacité_Énergie': metrics['energy_efficiency'],
+                                        'Efficacité_Trajectoire': metrics['trajectory_efficiency'],
+                                        'Distance': metrics['distance'],
+                                        'Durée': metrics['duration']
                                     })
                         
-                        repro_df = pd.DataFrame(repro_stats)
-                        st.dataframe(repro_df, use_container_width=True)
-                        
-                        # Export reproducibility data
-                        csv_repro = metrics_df.to_csv(index=False)
-                        st.download_button(
-                            label="📊 Données de Reproductibilité (CSV)",
-                            data=csv_repro,
-                            file_name=f"reproductibilite_{selected_condition}.csv",
-                            mime="text/csv"
-                        )
-        
-        st.markdown("</div></div>", unsafe_allow_html=True)
-    
-# Remplacez cette partie dans la section "Comparaison Multi-Expériences" :
-
-# ===== COMPARAISON MULTI-EXPÉRIENCES =====
-elif analysis_type == "🔍 Comparaison Multi-Expériences":
-    st.markdown("# 🔍 Comparaison Multi-Expériences")
-    
-    if not st.session_state.experiments:
-        st.warning("⚠️ Aucune expérience disponible pour comparaison.")
-        
-        if st.button("📊 Charger des expériences d'exemple"):
-            water_contents = [0, 5, 10, 15, 20]
-            for w in water_contents:
-                df_sample, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
-                st.session_state.experiments[f"Sample_W{w}%"] = {
-                    'data': df_sample,
-                    'metadata': metadata
-                }
-            st.success("✅ Expériences d'exemple chargées!")
-            st.rerun()
-    else:
-        # Show available experiments
-        st.markdown("### 📋 Expériences Disponibles")
-        
-        exp_data = []
-        for name, exp in st.session_state.experiments.items():
-            meta = exp['metadata']
-            exp_data.append({
-                'Expérience': name,
-                'Teneur en Eau (%)': meta['water_content'],
-                'Type de Sphère': meta['sphere_type'],
-                'Taux de Succès (%)': f"{meta['success_rate']:.1f}",
-                'Détections Valides': meta['valid_detections'],
-                'Date': meta['date']
-            })
-        
-        exp_df = pd.DataFrame(exp_data)
-        st.dataframe(exp_df, use_container_width=True)
-        
-        # Comparison interface - CORRECTION ICI
-        selected_experiments = st.multiselect(
-            "Choisissez les expériences pour comparaison:",
-            options=list(st.session_state.experiments.keys()),
-            default=list(st.session_state.experiments.keys())[:min(4, len(st.session_state.experiments))]
-        )
-        
-        if len(selected_experiments) >= 2:
-            comparison_data = []
+                        if len(experiment_metrics) < 2:
+                            st.error("❌ Pas assez d'expériences valides pour l'analyse de reproductibilité.")
+                        else:
+                            metrics_df = pd.DataFrame(experiment_metrics)
+                            
+                            # Detect anomalies
+                            anomalies = detect_anomalies(condition_experiments, threshold=2.0)
+                            
+                            st.markdown("#### 🚨 Détection d'Anomalies")
+                            
+                            if anomalies:
+                                st.markdown("**Anomalies détectées:**")
+                                for anomaly in anomalies:
+                                    st.markdown(f"""
+                                    <div class="status-warning">
+                                        ⚠️ <strong>{anomaly['name']}</strong> - {anomaly['metric']}: 
+                                        {anomaly['value']:.6f} (Z-score: {anomaly['z_score']:.2f})
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                            else:
+                                st.markdown('<div class="status-success">✅ Aucune anomalie détectée</div>', unsafe_allow_html=True)
+                            
+                            # Show reproducibility statistics
+                            st.markdown("#### 📊 Statistiques de Reproductibilité")
+                            
+                            # Calculate reproducibility statistics
+                            repro_stats = []
+                            numeric_cols = ['Krr', 'Vitesse_Max', 'Efficacité_Énergie', 'Efficacité_Trajectoire']
+                            
+                            for col in numeric_cols:
+                                if col in metrics_df.columns:
+                                    values = metrics_df[col].dropna()
+                                    if len(values) > 0:
+                                        mean_val = values.mean()
+                                        std_val = values.std()
+                                        cv = (std_val / mean_val * 100) if mean_val != 0 else 0
+                                        
+                                        repro_stats.append({
+                                            'Paramètre': col,
+                                            'Moyenne': mean_val,
+                                            'Écart-type': std_val,
+                                            'CV (%)': cv,
+                                            'Min': values.min(),
+                                            'Max': values.max(),
+                                            'N': len(values)
+                                        })
+                            
+                            repro_df = pd.DataFrame(repro_stats)
+                            st.dataframe(repro_df, use_container_width=True)
+                            
+                            # Export reproducibility data
+                            csv_repro = metrics_df.to_csv(index=False)
+                            st.download_button(
+                                label="📊 Données de Reproductibilité (CSV)",
+                                data=csv_repro,
+                                file_name=f"reproductibilite_{selected_condition}.csv",
+                                mime="text/csv"
+                            )
             
-            for exp_name in selected_experiments:
-                exp = st.session_state.experiments[exp_name]
-                df_exp = exp['data']
+            st.markdown("</div></div>", unsafe_allow_html=True)
+        
+    # Remplacez cette partie dans la section "Comparaison Multi-Expériences" :
+    
+    # ===== COMPARAISON MULTI-EXPÉRIENCES =====
+    elif analysis_type == "🔍 Comparaison Multi-Expériences":
+        st.markdown("# 🔍 Comparaison Multi-Expériences")
+        
+        if not st.session_state.experiments:
+            st.warning("⚠️ Aucune expérience disponible pour comparaison.")
+            
+            if st.button("📊 Charger des expériences d'exemple"):
+                water_contents = [0, 5, 10, 15, 20]
+                for w in water_contents:
+                    df_sample, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
+                    st.session_state.experiments[f"Sample_W{w}%"] = {
+                        'data': df_sample,
+                        'metadata': metadata
+                    }
+                st.success("✅ Expériences d'exemple chargées!")
+                st.rerun()
+        else:
+            # Show available experiments
+            st.markdown("### 📋 Expériences Disponibles")
+            
+            exp_data = []
+            for name, exp in st.session_state.experiments.items():
                 meta = exp['metadata']
-                df_exp_valid = df_exp[(df_exp['X_center'] != 0) & (df_exp['Y_center'] != 0) & (df_exp['Radius'] != 0)]
-                
-                metrics = calculate_advanced_metrics(df_exp_valid)
-                
-                comparison_data.append({
-                    'Expérience': exp_name,
-                    'Water_Content': meta['water_content'],
-                    'Sphere_Type': meta['sphere_type'],
-                    'Success_Rate': meta['success_rate'],
-                    'Krr': metrics['krr'] if metrics else None,
-                    'Max_Velocity': metrics['max_velocity'] if metrics else None,
-                    'Energy_Efficiency': metrics['energy_efficiency'] if metrics else None,
-                    'Trajectory_Efficiency': metrics['trajectory_efficiency'] if metrics else None,
+                exp_data.append({
+                    'Expérience': name,
+                    'Teneur en Eau (%)': meta['water_content'],
+                    'Type de Sphère': meta['sphere_type'],
+                    'Taux de Succès (%)': f"{meta['success_rate']:.1f}",
+                    'Détections Valides': meta['valid_detections'],
+                    'Date': meta['date']
                 })
             
-            comp_df = pd.DataFrame(comparison_data)
+            exp_df = pd.DataFrame(exp_data)
+            st.dataframe(exp_df, use_container_width=True)
             
-            # Visualization
-            st.markdown("### 📊 Analyses Comparatives")
-            
-            comp_col1, comp_col2 = st.columns(2)
-            
-            with comp_col1:
-                if comp_df['Krr'].notna().any():
-                    fig_krr = px.scatter(comp_df, x='Water_Content', y='Krr', 
-                                       color='Sphere_Type', size='Success_Rate',
-                                       hover_data=['Expérience'],
-                                       title="🔍 Krr vs Teneur en Eau")
-                    st.plotly_chart(fig_krr, use_container_width=True)
-            
-            with comp_col2:
-                fig_success = px.bar(comp_df, x='Expérience', y='Success_Rate',
-                                   color='Water_Content',
-                                   title="📈 Taux de Succès de Détection")
-                fig_success.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_success, use_container_width=True)
-            
-            # Comparison table
-            st.markdown("### 📋 Tableau de Comparaison")
-            
-            display_comp = comp_df.copy()
-            if 'Krr' in display_comp.columns:
-                display_comp['Krr'] = display_comp['Krr'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else "N/A")
-            
-            st.dataframe(display_comp, use_container_width=True)
-            
-            # Export comparison
-            csv_comparison = comp_df.to_csv(index=False)
-            st.download_button(
-                label="📥 Télécharger comparaison (CSV)",
-                data=csv_comparison,
-                file_name="comparaison_experiences.csv",
-                mime="text/csv"
+            # Comparison interface - CORRECTION ICI
+            selected_experiments = st.multiselect(
+                "Choisissez les expériences pour comparaison:",
+                options=list(st.session_state.experiments.keys()),
+                default=list(st.session_state.experiments.keys())[:min(4, len(st.session_state.experiments))]
             )
-        
-        else:
-            st.info("Veuillez sélectionner au moins 2 expériences pour la comparaison")
+            
+            if len(selected_experiments) >= 2:
+                comparison_data = []
+                
+                for exp_name in selected_experiments:
+                    exp = st.session_state.experiments[exp_name]
+                    df_exp = exp['data']
+                    meta = exp['metadata']
+                    df_exp_valid = df_exp[(df_exp['X_center'] != 0) & (df_exp['Y_center'] != 0) & (df_exp['Radius'] != 0)]
+                    
+                    metrics = calculate_advanced_metrics(df_exp_valid)
+                    
+                    comparison_data.append({
+                        'Expérience': exp_name,
+                        'Water_Content': meta['water_content'],
+                        'Sphere_Type': meta['sphere_type'],
+                        'Success_Rate': meta['success_rate'],
+                        'Krr': metrics['krr'] if metrics else None,
+                        'Max_Velocity': metrics['max_velocity'] if metrics else None,
+                        'Energy_Efficiency': metrics['energy_efficiency'] if metrics else None,
+                        'Trajectory_Efficiency': metrics['trajectory_efficiency'] if metrics else None,
+                    })
+                
+                comp_df = pd.DataFrame(comparison_data)
+                
+                # Visualization
+                st.markdown("### 📊 Analyses Comparatives")
+                
+                comp_col1, comp_col2 = st.columns(2)
+                
+                with comp_col1:
+                    if comp_df['Krr'].notna().any():
+                        fig_krr = px.scatter(comp_df, x='Water_Content', y='Krr', 
+                                           color='Sphere_Type', size='Success_Rate',
+                                           hover_data=['Expérience'],
+                                           title="🔍 Krr vs Teneur en Eau")
+                        st.plotly_chart(fig_krr, use_container_width=True)
+                
+                with comp_col2:
+                    fig_success = px.bar(comp_df, x='Expérience', y='Success_Rate',
+                                       color='Water_Content',
+                                       title="📈 Taux de Succès de Détection")
+                    fig_success.update_xaxes(tickangle=45)
+                    st.plotly_chart(fig_success, use_container_width=True)
+                
+                # Comparison table
+                st.markdown("### 📋 Tableau de Comparaison")
+                
+                display_comp = comp_df.copy()
+                if 'Krr' in display_comp.columns:
+                    display_comp['Krr'] = display_comp['Krr'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else "N/A")
+                
+                st.dataframe(display_comp, use_container_width=True)
+                
+                # Export comparison
+                csv_comparison = comp_df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Télécharger comparaison (CSV)",
+                    data=csv_comparison,
+                    file_name="comparaison_experiences.csv",
+                    mime="text/csv"
+                )
+            
+            else:
+                st.info("Veuillez sélectionner au moins 2 expériences pour la comparaison")
 
 # ===== PREDICTION MODULE =====
 elif analysis_type == "🎯 Module de Prédiction":
