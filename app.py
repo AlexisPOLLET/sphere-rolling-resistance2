@@ -527,6 +527,146 @@ if (st.session_state.current_df is not None and
         with col1:
             st.markdown(f"""
             <div class="metric-item">
+                <div class="metric-value">{len(df)}</div>
+                <div class="metric-label">Frames Totales</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div class="metric-item">
+                <div class="metric-value">{len(df_valid)}</div>
+                <div class="metric-label">Détections Valides</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            success_rate = len(df_valid) / len(df) * 100 if len(df) > 0 else 0
+            st.markdown(f"""
+            <div class="metric-item">
+                <div class="metric-value">{success_rate:.1f}%</div>
+                <div class="metric-label">Taux de Succès</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            avg_radius = df_valid['Radius'].mean() if len(df_valid) > 0 else 0
+            st.markdown(f"""
+            <div class="metric-item">
+                <div class="metric-value">{avg_radius:.1f}</div>
+                <div class="metric-label">Rayon Moyen (px)</div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.warning("⚠️ Aucune détection valide dans les données chargées.")
+
+# ==================== ANALYSIS SECTIONS ====================
+
+if (st.session_state.current_df_valid is not None and 
+    len(st.session_state.current_df_valid) > 0):
+    
+    df_valid = st.session_state.current_df_valid
+    
+    # ===== CODE 1: TRAJECTORY VISUALIZATION =====
+    if analysis_type == "📈 Code 1 : Visualisation de Trajectoire":
+        st.markdown("""
+        <div class="analysis-results">
+            <h2 class="results-header">📈 Code 1 : Détection et Visualisation de Trajectoire</h2>
+            <div class="results-content">
+        """, unsafe_allow_html=True)
+        
+        # Detection configuration
+        st.markdown("### ⚙️ Configuration de Détection")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**Paramètres de Taille**")
+            minR = st.slider("Rayon minimum", 10, 30, 18)
+            maxR = st.slider("Rayon maximum", 25, 50, 35)
+            
+        with col2:
+            st.markdown("**Paramètres de Détection**")
+            bw_threshold = st.slider("Seuil de détection", 1, 20, 8)
+            min_score = st.slider("Score minimum", 20, 60, 40)
+            
+        with col3:
+            st.markdown("**Paramètres de Forme**")
+            circularity_min = st.slider("Circularité minimum", 0.1, 1.0, 0.5)
+            max_movement = st.slider("Mouvement max", 50, 200, 120)
+        
+        # Main trajectory visualization
+        st.markdown("### 🎯 Trajectoire de la Sphère Détectée")
+        
+        # Create 4-subplot visualization as shown in your image
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=('🛤️ Trajectoire Complète', '📍 Position X vs Temps', 
+                           '📍 Position Y vs Temps', '⚪ Évolution du Rayon'),
+            specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                   [{"secondary_y": False}, {"secondary_y": False}]]
+        )
+        
+        # Trajectory with color gradient
+        fig.add_trace(
+            go.Scatter(x=df_valid['X_center'], y=df_valid['Y_center'],
+                      mode='markers+lines', 
+                      marker=dict(color=df_valid['Frame'], 
+                                colorscale='viridis', 
+                                size=6,
+                                colorbar=dict(title="Frame")),
+                      line=dict(width=2),
+                      name='Trajectoire'),
+            row=1, col=1
+        )
+        
+        # X Position
+        fig.add_trace(
+            go.Scatter(x=df_valid['Frame'], y=df_valid['X_center'],
+                      mode='lines+markers', 
+                      line=dict(color='#3498db', width=2),
+                      marker=dict(size=4),
+                      name='Position X'),
+            row=1, col=2
+        )
+        
+        # Y Position
+        fig.add_trace(
+            go.Scatter(x=df_valid['Frame'], y=df_valid['Y_center'],
+                      mode='lines+markers',
+                      line=dict(color='#e74c3c', width=2),
+                      marker=dict(size=4),
+                      name='Position Y'),
+            row=2, col=1
+        )
+        
+        # Radius evolution
+        fig.add_trace(
+            go.Scatter(x=df_valid['Frame'], y=df_valid['Radius'],
+                      mode='lines+markers',
+                      line=dict(color='#2ecc71', width=2),
+                      marker=dict(size=4),
+                      name='Rayon'),
+            row=2, col=2
+        )
+        
+        fig.update_layout(height=600, showlegend=False,
+                         title_text="Analyse Complète de Détection")
+        fig.update_yaxes(autorange="reversed", row=1, col=1)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Detection statistics
+        st.markdown("### 📊 Statistiques de Détection")
+        
+        stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+        
+        with stat_col1:
+            total_distance = np.sqrt(
+                (df_valid['X_center'].iloc[-1] - df_valid['X_center'].iloc[0])**2 + 
+                (df_valid['Y_center'].iloc[-1] - df_valid['Y_center'].iloc[0])**2
+            )
+            st.markdown(f"""
+            <div class="metric-item">
                 <div class="metric-value">{total_distance:.1f}</div>
                 <div class="metric-label">Distance Totale (px)</div>
             </div>
@@ -1541,916 +1681,4 @@ Distance totale: {friction_results['total_distance']*1000:.2f} mm
             else:
                 st.error("❌ Impossible de calculer les métriques - données insuffisantes")
             
-        st.markdown("</div></div>", unsafe_allow_html=True)-item">
-                <div class="metric-value">{len(df)}</div>
-                <div class="metric-label">Frames Totales</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-            <div class="metric-item">
-                <div class="metric-value">{len(df_valid)}</div>
-                <div class="metric-label">Détections Valides</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            success_rate = len(df_valid) / len(df) * 100 if len(df) > 0 else 0
-            st.markdown(f"""
-            <div class="metric-item">
-                <div class="metric-value">{success_rate:.1f}%</div>
-                <div class="metric-label">Taux de Succès</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col4:
-            avg_radius = df_valid['Radius'].mean() if len(df_valid) > 0 else 0
-            st.markdown(f"""
-            <div class="metric-item">
-                <div class="metric-value">{avg_radius:.1f}</div>
-                <div class="metric-label">Rayon Moyen (px)</div>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.warning("⚠️ Aucune détection valide dans les données chargées.")
-
-# ==================== ANALYSIS SECTIONS ====================
-
-if (st.session_state.current_df_valid is not None and 
-    len(st.session_state.current_df_valid) > 0):
-    
-    df_valid = st.session_state.current_df_valid
-    
-    # ===== CODE 1: TRAJECTORY VISUALIZATION =====
-    if analysis_type == "📈 Code 1 : Visualisation de Trajectoire":
-        st.markdown("""
-        <div class="analysis-results">
-            <h2 class="results-header">📈 Code 1 : Détection et Visualisation de Trajectoire</h2>
-            <div class="results-content">
-        """, unsafe_allow_html=True)
-        
-        # Detection configuration
-        st.markdown("### ⚙️ Configuration de Détection")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("**Paramètres de Taille**")
-            minR = st.slider("Rayon minimum", 10, 30, 18)
-            maxR = st.slider("Rayon maximum", 25, 50, 35)
-            
-        with col2:
-            st.markdown("**Paramètres de Détection**")
-            bw_threshold = st.slider("Seuil de détection", 1, 20, 8)
-            min_score = st.slider("Score minimum", 20, 60, 40)
-            
-        with col3:
-            st.markdown("**Paramètres de Forme**")
-            circularity_min = st.slider("Circularité minimum", 0.1, 1.0, 0.5)
-            max_movement = st.slider("Mouvement max", 50, 200, 120)
-        
-        # Main trajectory visualization
-        st.markdown("### 🎯 Trajectoire de la Sphère Détectée")
-        
-        # Create 4-subplot visualization as shown in your image
-        fig = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=('🛤️ Trajectoire Complète', '📍 Position X vs Temps', 
-                           '📍 Position Y vs Temps', '⚪ Évolution du Rayon'),
-            specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                   [{"secondary_y": False}, {"secondary_y": False}]]
-        )
-        
-        # Trajectory with color gradient
-        fig.add_trace(
-            go.Scatter(x=df_valid['X_center'], y=df_valid['Y_center'],
-                      mode='markers+lines', 
-                      marker=dict(color=df_valid['Frame'], 
-                                colorscale='viridis', 
-                                size=6,
-                                colorbar=dict(title="Frame")),
-                      line=dict(width=2),
-                      name='Trajectoire'),
-            row=1, col=1
-        )
-        
-        # X Position
-        fig.add_trace(
-            go.Scatter(x=df_valid['Frame'], y=df_valid['X_center'],
-                      mode='lines+markers', 
-                      line=dict(color='#3498db', width=2),
-                      marker=dict(size=4),
-                      name='Position X'),
-            row=1, col=2
-        )
-        
-        # Y Position
-        fig.add_trace(
-            go.Scatter(x=df_valid['Frame'], y=df_valid['Y_center'],
-                      mode='lines+markers',
-                      line=dict(color='#e74c3c', width=2),
-                      marker=dict(size=4),
-                      name='Position Y'),
-            row=2, col=1
-        )
-        
-        # Radius evolution
-        fig.add_trace(
-            go.Scatter(x=df_valid['Frame'], y=df_valid['Radius'],
-                      mode='lines+markers',
-                      line=dict(color='#2ecc71', width=2),
-                      marker=dict(size=4),
-                      name='Rayon'),
-            row=2, col=2
-        )
-        
-        fig.update_layout(height=600, showlegend=False,
-                         title_text="Analyse Complète de Détection")
-        fig.update_yaxes(autorange="reversed", row=1, col=1)
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Detection statistics
-        st.markdown("### 📊 Statistiques de Détection")
-        
-        stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
-        
-        with stat_col1:
-            total_distance = np.sqrt(
-                (df_valid['X_center'].iloc[-1] - df_valid['X_center'].iloc[0])**2 + 
-                (df_valid['Y_center'].iloc[-1] - df_valid['Y_center'].iloc[0])**2
-            )
-            st.markdown(f"""
-            <div class="metric
-            
-    # ===== REPRODUCIBILITY ANALYSIS =====
-    elif analysis_type == "🔄 Analyse de Reproductibilité":
-        st.markdown("""
-        <div class="analysis-results">
-            <h2 class="results-header">🔄 Analyse de Reproductibilité et Détection d'Anomalies</h2>
-            <div class="results-content">
-        """, unsafe_allow_html=True)
-        
-        if not st.session_state.experiments:
-            st.warning("⚠️ Aucune expérience disponible pour l'analyse de reproductibilité.")
-            
-            if st.button("📊 Charger des expériences d'exemple avec répétitions"):
-                # Create sample experiments with repetitions
-                conditions = [
-                    (0, "Steel"), (10, "Steel"), (20, "Steel"),
-                    (0, "Plastic"), (10, "Plastic"), (20, "Plastic")
-                ]
-                
-                for water, material in conditions:
-                    # Create 3 repetitions for each condition
-                    for rep in range(1, 4):
-                        # Add some variation for realism
-                        variation = np.random.normal(0, 0.5)  # Small random variation
-                        df_sample, metadata = create_sample_data_with_metadata(
-                            f"{material}_W{water}%_Rep{rep}", 
-                            water + variation, 
-                            material
-                        )
-                        # Add noise to make some experiments anomalous
-                        if rep == 2 and water == 10:  # Make second repetition of 10% water anomalous
-                            # Modify data to create anomaly
-                            df_sample.loc[df_sample['X_center'] != 0, 'X_center'] *= 0.8
-                        
-                        st.session_state.experiments[f"{material}_W{water}%_Rep{rep}"] = {
-                            'data': df_sample,
-                            'metadata': metadata
-                        }
-                st.success("✅ Expériences d'exemple avec répétitions chargées!")
-                st.rerun()
-        else:
-            
-            # Group experiments by conditions
-            def group_experiments_by_conditions(experiments):
-                groups = {}
-                for exp_name, exp in experiments.items():
-                    meta = exp['metadata']
-                    # Create condition key (water content rounded to nearest 0.5, sphere type)
-                    water_key = round(meta['water_content'] * 2) / 2  # Round to nearest 0.5
-                    condition_key = f"{meta['sphere_type']}_W{water_key}%"
-                    
-                    if condition_key not in groups:
-                        groups[condition_key] = []
-                    
-                    groups[condition_key].append({
-                        'name': exp_name,
-                        'data': exp['data'],
-                        'metadata': meta
-                    })
-                
-                return groups
-            
-            # Detect anomalies using statistical methods
-            def detect_anomalies(group_data, threshold=2.0):
-                """Detect anomalies in a group of experiments using Z-score"""
-                if len(group_data) < 3:
-                    return []
-                
-                # Calculate metrics for each experiment
-                metrics_list = []
-                for exp in group_data:
-                    df_valid = exp['data'][(exp['data']['X_center'] != 0) & 
-                                          (exp['data']['Y_center'] != 0) & 
-                                          (exp['data']['Radius'] != 0)]
-                    
-                    if len(df_valid) > 10:
-                        metrics = calculate_advanced_metrics(df_valid)
-                        if metrics and metrics['krr'] is not None:
-                            metrics_list.append({
-                                'name': exp['name'],
-                                'krr': metrics['krr'],
-                                'max_velocity': metrics['max_velocity'],
-                                'energy_efficiency': metrics['energy_efficiency'],
-                                'trajectory_efficiency': metrics['trajectory_efficiency']
-                            })
-                
-                if len(metrics_list) < 3:
-                    return []
-                
-                # Calculate Z-scores for key metrics
-                anomalies = []
-                for metric_name in ['krr', 'max_velocity', 'energy_efficiency']:
-                    values = [m[metric_name] for m in metrics_list if m[metric_name] is not None]
-                    if len(values) >= 3:
-                        mean_val = np.mean(values)
-                        std_val = np.std(values)
-                        
-                        if std_val > 0:
-                            for i, m in enumerate(metrics_list):
-                                if m[metric_name] is not None:
-                                    z_score = abs((m[metric_name] - mean_val) / std_val)
-                                    if z_score > threshold:
-                                        anomalies.append({
-                                            'name': m['name'],
-                                            'metric': metric_name,
-                                            'value': m[metric_name],
-                                            'z_score': z_score,
-                                            'mean': mean_val,
-                                            'std': std_val
-                                        })
-                
-                return anomalies
-            
-            # Group experiments
-            groups = group_experiments_by_conditions(st.session_state.experiments)
-            
-            st.markdown("### 📊 Groupement par Conditions Expérimentales")
-            
-            # Show groups summary
-            group_summary = []
-            for condition, experiments in groups.items():
-                group_summary.append({
-                    'Condition': condition,
-                    'Nombre d\'expériences': len(experiments),
-                    'Expériences': ', '.join([exp['name'] for exp in experiments])
-                })
-            
-            group_df = pd.DataFrame(group_summary)
-            st.dataframe(group_df, use_container_width=True)
-            
-            # Select condition for detailed analysis
-            st.markdown("### 🎯 Sélection pour Analyse Détaillée")
-            
-            # Only show conditions with multiple experiments
-            multi_exp_conditions = {k: v for k, v in groups.items() if len(v) >= 2}
-            
-            if not multi_exp_conditions:
-                st.warning("⚠️ Aucune condition avec plusieurs expériences trouvée pour l'analyse de reproductibilité.")
-            else:
-                selected_condition = st.selectbox(
-                    "Choisissez une condition à analyser:",
-                    options=list(multi_exp_conditions.keys())
-                )
-                
-                if selected_condition:
-                    condition_experiments = multi_exp_conditions[selected_condition]
-                    
-                    st.markdown(f"### 🔍 Analyse de Reproductibilité - {selected_condition}")
-                    
-                    # Calculate metrics for all experiments in the group
-                    experiment_metrics = []
-                    
-                    for exp in condition_experiments:
-                        df_valid = exp['data'][(exp['data']['X_center'] != 0) & 
-                                              (exp['data']['Y_center'] != 0) & 
-                                              (exp['data']['Radius'] != 0)]
-                        
-                        if len(df_valid) > 10:
-                            metrics = calculate_advanced_metrics(df_valid)
-                            if metrics and metrics['krr'] is not None:
-                                experiment_metrics.append({
-                                    'Expérience': exp['name'],
-                                    'Krr': metrics['krr'],
-                                    'Vitesse_Max': metrics['max_velocity'],
-                                    'Efficacité_Énergie': metrics['energy_efficiency'],
-                                    'Efficacité_Trajectoire': metrics['trajectory_efficiency'],
-                                    'Distance': metrics['distance'],
-                                    'Durée': metrics['duration']
-                                })
-                    
-                    if len(experiment_metrics) < 2:
-                        st.error("❌ Pas assez d'expériences valides pour l'analyse de reproductibilité.")
-                    else:
-                        metrics_df = pd.DataFrame(experiment_metrics)
-                        
-                        # Detect anomalies
-                        anomalies = detect_anomalies(condition_experiments, threshold=2.0)
-                        
-                        st.markdown("#### 🚨 Détection d'Anomalies")
-                        
-                        if anomalies:
-                            st.markdown("**Anomalies détectées:**")
-                            for anomaly in anomalies:
-                                st.markdown(f"""
-                                <div class="status-warning">
-                                    ⚠️ <strong>{anomaly['name']}</strong> - {anomaly['metric']}: 
-                                    {anomaly['value']:.6f} (Z-score: {anomaly['z_score']:.2f})
-                                </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            st.markdown('<div class="status-success">✅ Aucune anomalie détectée</div>', unsafe_allow_html=True)
-                        
-                        # Show reproducibility statistics
-                        st.markdown("#### 📊 Statistiques de Reproductibilité")
-                        
-                        # Calculate reproducibility statistics
-                        repro_stats = []
-                        numeric_cols = ['Krr', 'Vitesse_Max', 'Efficacité_Énergie', 'Efficacité_Trajectoire']
-                        
-                        for col in numeric_cols:
-                            if col in metrics_df.columns:
-                                values = metrics_df[col].dropna()
-                                if len(values) > 0:
-                                    mean_val = values.mean()
-                                    std_val = values.std()
-                                    cv = (std_val / mean_val * 100) if mean_val != 0 else 0
-                                    
-                                    repro_stats.append({
-                                        'Paramètre': col,
-                                        'Moyenne': mean_val,
-                                        'Écart-type': std_val,
-                                        'CV (%)': cv,
-                                        'Min': values.min(),
-                                        'Max': values.max(),
-                                        'N': len(values)
-                                    })
-                        
-                        repro_df = pd.DataFrame(repro_stats)
-                        st.dataframe(repro_df, use_container_width=True)
-                        
-                        # Export reproducibility data
-                        csv_repro = metrics_df.to_csv(index=False)
-                        st.download_button(
-                            label="📊 Données de Reproductibilité (CSV)",
-                            data=csv_repro,
-                            file_name=f"reproductibilite_{selected_condition}.csv",
-                            mime="text/csv"
-                        )
-        
         st.markdown("</div></div>", unsafe_allow_html=True)
-
-    # ===== COMPARAISON MULTI-EXPÉRIENCES =====
-    elif analysis_type == "🔍 Comparaison Multi-Expériences":
-        st.markdown("# 🔍 Comparaison Multi-Expériences")
-        
-        if not st.session_state.experiments:
-            st.warning("⚠️ Aucune expérience disponible pour comparaison.")
-            
-            if st.button("📊 Charger des expériences d'exemple"):
-                water_contents = [0, 5, 10, 15, 20]
-                for w in water_contents:
-                    df_sample, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
-                    st.session_state.experiments[f"Sample_W{w}%"] = {
-                        'data': df_sample,
-                        'metadata': metadata
-                    }
-                st.success("✅ Expériences d'exemple chargées!")
-                st.rerun()
-        else:
-            # Show available experiments
-            st.markdown("### 📋 Expériences Disponibles")
-            
-            exp_data = []
-            for name, exp in st.session_state.experiments.items():
-                meta = exp['metadata']
-                exp_data.append({
-                    'Expérience': name,
-                    'Teneur en Eau (%)': meta['water_content'],
-                    'Type de Sphère': meta['sphere_type'],
-                    'Taux de Succès (%)': f"{meta['success_rate']:.1f}",
-                    'Détections Valides': meta['valid_detections'],
-                    'Date': meta['date']
-                })
-            
-            exp_df = pd.DataFrame(exp_data)
-            st.dataframe(exp_df, use_container_width=True)
-            
-            # Comparison interface
-            selected_experiments = st.multiselect(
-                "Choisissez les expériences pour comparaison:",
-                options=list(st.session_state.experiments.keys()),
-                default=list(st.session_state.experiments.keys())[:min(4, len(st.session_state.experiments))]
-            )
-            
-            if len(selected_experiments) >= 2:
-                comparison_data = []
-                
-                for exp_name in selected_experiments:
-                    exp = st.session_state.experiments[exp_name]
-                    df_exp = exp['data']
-                    meta = exp['metadata']
-                    df_exp_valid = df_exp[(df_exp['X_center'] != 0) & (df_exp['Y_center'] != 0) & (df_exp['Radius'] != 0)]
-                    
-                    metrics = calculate_advanced_metrics(df_exp_valid)
-                    
-                    comparison_data.append({
-                        'Expérience': exp_name,
-                        'Water_Content': meta['water_content'],
-                        'Sphere_Type': meta['sphere_type'],
-                        'Success_Rate': meta['success_rate'],
-                        'Krr': metrics['krr'] if metrics else None,
-                        'Max_Velocity': metrics['max_velocity'] if metrics else None,
-                        'Energy_Efficiency': metrics['energy_efficiency'] if metrics else None,
-                        'Trajectory_Efficiency': metrics['trajectory_efficiency'] if metrics else None,
-                    })
-                
-                comp_df = pd.DataFrame(comparison_data)
-                
-                # Visualization
-                st.markdown("### 📊 Analyses Comparatives")
-                
-                comp_col1, comp_col2 = st.columns(2)
-                
-                with comp_col1:
-                    if comp_df['Krr'].notna().any():
-                        fig_krr = px.scatter(comp_df, x='Water_Content', y='Krr', 
-                                           color='Sphere_Type', size='Success_Rate',
-                                           hover_data=['Expérience'],
-                                           title="🔍 Krr vs Teneur en Eau")
-                        st.plotly_chart(fig_krr, use_container_width=True)
-                
-                with comp_col2:
-                    fig_success = px.bar(comp_df, x='Expérience', y='Success_Rate',
-                                       color='Water_Content',
-                                       title="📈 Taux de Succès de Détection")
-                    fig_success.update_xaxes(tickangle=45)
-                    st.plotly_chart(fig_success, use_container_width=True)
-                
-                # Comparison table
-                st.markdown("### 📋 Tableau de Comparaison")
-                
-                display_comp = comp_df.copy()
-                if 'Krr' in display_comp.columns:
-                    display_comp['Krr'] = display_comp['Krr'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else "N/A")
-                
-                st.dataframe(display_comp, use_container_width=True)
-                
-                # Export comparison
-                csv_comparison = comp_df.to_csv(index=False)
-                st.download_button(
-                    label="📥 Télécharger comparaison (CSV)",
-                    data=csv_comparison,
-                    file_name="comparaison_experiences.csv",
-                    mime="text/csv"
-                )
-            
-            else:
-                st.info("Veuillez sélectionner au moins 2 expériences pour la comparaison")
-
-    # ===== PREDICTION MODULE =====
-    elif analysis_type == "🎯 Module de Prédiction":
-        st.markdown("# 🎯 Module de Prédiction")
-        
-        if not st.session_state.experiments:
-            st.warning("⚠️ Aucune donnée expérimentale disponible pour les prédictions.")
-            
-            if st.button("📊 Charger des données d'exemple pour prédiction"):
-                water_contents = [0, 5, 10, 15, 20, 25]
-                for w in water_contents:
-                    df_sample, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
-                    st.session_state.experiments[f"Sample_W{w}%"] = {
-                        'data': df_sample,
-                        'metadata': metadata
-                    }
-                st.success("✅ Données d'exemple chargées!")
-                st.rerun()
-        else:
-            # Build simple prediction models
-            all_data = []
-            for exp_name, exp in st.session_state.experiments.items():
-                df_exp = exp['data']
-                meta = exp['metadata']
-                df_exp_valid = df_exp[(df_exp['X_center'] != 0) & (df_exp['Y_center'] != 0) & (df_exp['Radius'] != 0)]
-                
-                metrics = calculate_advanced_metrics(df_exp_valid)
-                if metrics and metrics['krr'] is not None:
-                    all_data.append({
-                        'water_content': meta['water_content'],
-                        'krr': metrics['krr'],
-                        'energy_efficiency': metrics['energy_efficiency']
-                    })
-            
-            if len(all_data) >= 3:
-                model_df = pd.DataFrame(all_data)
-                
-                # Simple linear regression for Krr
-                water_vals = model_df['water_content'].values
-                krr_vals = model_df['krr'].values
-                
-                # Fit polynomial
-                coeffs = np.polyfit(water_vals, krr_vals, 1)
-                
-                st.markdown("### 🔮 Prédictions")
-                
-                pred_water = st.slider("Teneur en Eau pour Prédiction (%)", 0.0, 30.0, 10.0, 0.5)
-                
-                # Make prediction
-                predicted_krr = np.polyval(coeffs, pred_water)
-                
-                st.markdown(f"""
-                <div class="metric-item">
-                    <div class="metric-value">{predicted_krr:.6f}</div>
-                    <div class="metric-label">Krr Prédit</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Show prediction plot
-                water_range = np.linspace(0, 30, 100)
-                krr_pred_range = np.polyval(coeffs, water_range)
-                
-                fig_pred = go.Figure()
-                fig_pred.add_trace(go.Scatter(x=water_vals, y=krr_vals, mode='markers',
-                                            name='Données expérimentales', marker=dict(color='red', size=10)))
-                fig_pred.add_trace(go.Scatter(x=water_range, y=krr_pred_range, mode='lines',
-                                            name='Prédiction', line=dict(color='blue', width=2)))
-                fig_pred.add_trace(go.Scatter(x=[pred_water], y=[predicted_krr], mode='markers',
-                                            name='Prédiction actuelle', marker=dict(color='green', size=15, symbol='star')))
-                
-                fig_pred.update_layout(
-                    title="📈 Modèle de Prédiction Krr",
-                    xaxis_title="Teneur en Eau (%)",
-                    yaxis_title="Coefficient Krr"
-                )
-                
-                st.plotly_chart(fig_pred, use_container_width=True)
-                
-                # Model equation
-                a, b = coeffs
-                st.markdown(f"**Équation du modèle:** Krr = {a:.6f} × W + {b:.6f}")
-                
-            else:
-                st.error("❌ Données insuffisantes pour construire un modèle prédictif. Besoin d'au moins 3 expériences.")
-
-    # ===== AUTO-GENERATED REPORT =====
-    elif analysis_type == "📄 Rapport Auto-Généré":
-        st.markdown("# 📄 Rapport d'Analyse Auto-Généré")
-        
-        if not st.session_state.experiments:
-            st.warning("⚠️ Aucune donnée expérimentale disponible pour la génération de rapport.")
-            
-            if st.button("📊 Charger des données d'exemple pour rapport"):
-                conditions = [
-                    (0, "Steel"), (5, "Steel"), (10, "Steel"), (15, "Steel"), (20, "Steel"),
-                    (10, "Plastic"), (15, "Plastic")
-                ]
-                
-                for water, material in conditions:
-                    df_sample, metadata = create_sample_data_with_metadata(f"{material}_W{water}%", water, material)
-                    st.session_state.experiments[f"{material}_W{water}%"] = {
-                        'data': df_sample,
-                        'metadata': metadata
-                    }
-                st.success("✅ Données d'exemple complètes chargées!")
-                st.rerun()
-        else:
-            # Generate comprehensive report
-            with st.spinner("🔄 Génération du rapport..."):
-                
-                total_experiments = len(st.session_state.experiments)
-                water_contents = [exp['metadata']['water_content'] for exp in st.session_state.experiments.values()]
-                success_rates = [exp['metadata']['success_rate'] for exp in st.session_state.experiments.values()]
-                
-                # Calculate metrics for all experiments
-                all_metrics = []
-                for exp_name, exp in st.session_state.experiments.items():
-                    df_exp = exp['data']
-                    meta = exp['metadata']
-                    df_exp_valid = df_exp[(df_exp['X_center'] != 0) & (df_exp['Y_center'] != 0) & (df_exp['Radius'] != 0)]
-                    
-                    metrics = calculate_advanced_metrics(df_exp_valid)
-                    if metrics:
-                        all_metrics.append({
-                            'exp_name': exp_name,
-                            'water_content': meta['water_content'],
-                            'sphere_type': meta['sphere_type'],
-                            **metrics
-                        })
-            
-            # Display report summary
-            st.markdown("### 📋 Résumé du Rapport")
-            
-            report_col1, report_col2, report_col3, report_col4 = st.columns(4)
-            
-            with report_col1:
-                st.markdown(f"""
-                <div class="metric-item">
-                    <div class="metric-value">{total_experiments}</div>
-                    <div class="metric-label">Expériences Totales</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with report_col2:
-                water_range = max(water_contents) - min(water_contents)
-                st.markdown(f"""
-                <div class="metric-item">
-                    <div class="metric-value">{water_range:.1f}%</div>
-                    <div class="metric-label">Gamme d'Humidité</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with report_col3:
-                st.markdown(f"""
-                <div class="metric-item">
-                    <div class="metric-value">{np.mean(success_rates):.1f}%</div>
-                    <div class="metric-label">Succès Moyen</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with report_col4:
-                st.markdown(f"""
-                <div class="metric-item">
-                    <div class="metric-value">{len(all_metrics)}</div>
-                    <div class="metric-label">Analyses Valides</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # Generate text report
-            current_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            
-            report_content = f"""
-# 📊 RAPPORT D'ANALYSE AUTOMATIQUE + FRICTION
-## Résistance au Roulement des Sphères sur Matériau Granulaire Humide
-
-**Généré le:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-**Nombre d'expériences:** {total_experiments}
-
-## 🎯 RÉSUMÉ EXÉCUTIF
-
-### Principales Découvertes:
-• **Expériences analysées**: {total_experiments}
-• **Gamme d'humidité testée**: {min(water_contents):.1f}% - {max(water_contents):.1f}%
-• **Succès de détection moyen**: {np.mean(success_rates):.1f}%
-
-### Métriques Clés:
-"""
-            
-            if all_metrics:
-                all_krr = [m['krr'] for m in all_metrics if m['krr'] is not None]
-                if all_krr:
-                    report_content += f"• **Gamme coefficient Krr**: {min(all_krr):.6f} - {max(all_krr):.6f}\n"
-                
-                all_efficiency = [m['energy_efficiency'] for m in all_metrics if m['energy_efficiency'] is not None]
-                if all_efficiency:
-                    report_content += f"• **Gamme efficacité énergétique**: {min(all_efficiency):.1f}% - {max(all_efficiency):.1f}%\n"
-            
-            report_content += """
-## 🔥 NOUVEAUTÉS - ANALYSE DE FRICTION
-
-Cette analyse inclut maintenant l'évaluation directe des coefficients de friction grain-sphère:
-• **μ cinétique**: Friction directe entre grains et sphère
-• **μ roulement**: Résistance pure au roulement
-• **μ énergétique**: Basé sur la dissipation d'énergie
-• **Analyse de trace**: Ratio δ/R, volume déplacé, indices géométriques
-
-## 🔧 RECOMMANDATIONS D'INGÉNIERIE
-
-• **Applications industrielles**: Maintenir la teneur en eau ±2% de l'optimum
-• **Transport longue distance**: Utiliser une teneur en eau plus faible pour l'efficacité
-• **Applications de précision**: Surveiller l'humidité en continu
-• **Analyse de friction**: Utiliser les nouveaux coefficients pour optimiser les systèmes
-
-## 📊 QUALITÉ DES DONNÉES
-"""
-            
-            avg_success = np.mean(success_rates)
-            if avg_success >= 80:
-                report_content += "✅ **Excellente qualité de détection** - Résultats très fiables\n"
-            elif avg_success >= 70:
-                report_content += "✅ **Bonne qualité de détection** - Résultats fiables\n"
-            else:
-                report_content += "⚠️ **Qualité de détection modérée** - Considérer l'amélioration du setup\n"
-            
-            report_content += """
-## 📞 CONTACT & MÉTHODOLOGIE
-
-**Institution de Recherche**: Department of Cosmic Earth Science, Graduate School of Science, Osaka University
-**Domaine de Recherche**: Mécanique Granulaire
-**Innovation**: Première étude systématique des effets d'humidité + analyse de friction directe
-
-**Méthodologie**: Suivi de sphères par vision par ordinateur avec analyse cinématique et friction
-**Détection**: Soustraction d'arrière-plan avec transformées de Hough circulaires
-**Analyse**: Calcul Krr + coefficients de friction μ utilisant les principes de conservation d'énergie
-**Nouveau**: Calcul direct des coefficients de friction grain-sphère à partir des données vidéo
-"""
-            
-            # Export options
-            export_col1, export_col2 = st.columns(2)
-            
-            with export_col1:
-                st.download_button(
-                    label="📥 Télécharger le rapport (TXT)",
-                    data=report_content,
-                    file_name=f"rapport_analyse_friction_{current_time}.txt",
-                    mime="text/plain"
-                )
-            
-            with export_col2:
-                if all_metrics:
-                    comprehensive_data = []
-                    for metric in all_metrics:
-                        comprehensive_data.append({
-                            'Experiment': metric['exp_name'],
-                            'Water_Content_percent': metric['water_content'],
-                            'Sphere_Type': metric['sphere_type'],
-                            'Krr_coefficient': metric['krr'],
-                            'Max_Velocity_mm_s': metric['max_velocity'] * 1000 if metric['max_velocity'] else None,
-                            'Energy_Efficiency_percent': metric['energy_efficiency'],
-                            'Distance_traveled_mm': metric['distance'] * 1000 if metric['distance'] else None
-                        })
-                    
-                    comprehensive_df = pd.DataFrame(comprehensive_data)
-                    csv_comprehensive = comprehensive_df.to_csv(index=False)
-                    
-                    st.download_button(
-                        label="📊 Données complètes (CSV)",
-                        data=csv_comprehensive,
-                        file_name=f"donnees_completes_friction_{current_time}.csv",
-                        mime="text/csv"
-                    )
-            
-            # Quality assessment with friction
-            st.markdown("### 🎯 Évaluation de la Qualité + Friction")
-            
-            quality_col1, quality_col2 = st.columns(2)
-            
-            with quality_col1:
-                st.markdown("#### Qualité des Données")
-                
-                if avg_success >= 80:
-                    st.markdown('<div class="status-success">✅ Excellente qualité de détection</div>', unsafe_allow_html=True)
-                    quality_score = "A+"
-                elif avg_success >= 70:
-                    st.markdown('<div class="status-success">✅ Bonne qualité de détection</div>', unsafe_allow_html=True)
-                    quality_score = "A"
-                elif avg_success >= 60:
-                    st.markdown('<div class="status-warning">⚠️ Qualité de détection modérée</div>', unsafe_allow_html=True)
-                    quality_score = "B"
-                else:
-                    st.markdown('<div class="status-error">❌ Qualité de détection faible</div>', unsafe_allow_html=True)
-                    quality_score = "C"
-                
-                st.markdown(f"""
-                <div class="metric-item">
-                    <div class="metric-value">{quality_score}</div>
-                    <div class="metric-label">Score de Qualité</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with quality_col2:
-                st.markdown("#### Innovation Friction")
-                
-                st.markdown(f"""
-                <div class="friction-card">
-                    <h4>🔥 Nouvelle Analyse</h4>
-                    <p><strong>Coefficients de friction</strong> calculés directement à partir des données vidéo</p>
-                    <p>• μ cinétique, μ roulement, μ énergétique</p>
-                    <p>• Analyse de trace δ/R</p>
-                    <p>• Validation avec littérature</p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # Recommendations for improvement
-            st.markdown("### 💡 Recommandations d'Amélioration + Friction")
-            
-            recommendations = []
-            
-            if total_experiments < 5:
-                recommendations.append("📊 **Augmenter le nombre d'expériences** - Collecter au moins 5-8 expériences")
-            
-            if max(water_contents) - min(water_contents) < 15:
-                recommendations.append("💧 **Élargir la gamme d'humidité** - Tester une gamme plus large")
-            
-            if avg_success < 75:
-                recommendations.append("🔧 **Améliorer la qualité de détection** - Optimiser les paramètres")
-            
-            sphere_types = set([exp['metadata']['sphere_type'] for exp in st.session_state.experiments.values()])
-            if len(sphere_types) < 2:
-                recommendations.append("⚪ **Tester différents matériaux** - Inclure plusieurs types de sphères")
-            
-            # New friction-specific recommendations
-            recommendations.append("🔥 **Utiliser l'analyse de friction** - Exploiter les nouveaux coefficients μ")
-            recommendations.append("🛤️ **Mesurer les traces** - Ajouter les dimensions δ, largeur, longueur pour analyse complète")
-            recommendations.append("📊 **Comparer μ vs teneur en eau** - Établir des relations empiriques de friction")
-            
-            if recommendations:
-                for rec in recommendations:
-                    st.markdown(rec)
-            else:
-                st.markdown('<div class="status-success">✅ Configuration expérimentale excellente!</div>', unsafe_allow_html=True)
-
-else:
-    # No data loaded message
-    st.markdown("""
-    <div class="section-card">
-        <h2>🚀 Pour commencer</h2>
-        <p>Téléchargez vos données expérimentales ou utilisez les données d'exemple pour explorer la plateforme.</p>
-        
-        <h3>📋 Format de fichier attendu:</h3>
-        <ul>
-            <li><strong>Frame</strong>: Numéro d'image</li>
-            <li><strong>X_center</strong>: Position X du centre de la sphère</li>
-            <li><strong>Y_center</strong>: Position Y du centre de la sphère</li>
-            <li><strong>Radius</strong>: Rayon détecté de la sphère</li>
-        </ul>
-        
-        <h3>🔧 Analyses Disponibles:</h3>
-        <ul>
-            <li><strong>Code 1</strong>: Visualisation de trajectoire et qualité de détection</li>
-            <li><strong>Code 2</strong>: Analyse Krr avec comparaison littérature</li>
-            <li><strong>Code 3</strong>: 🔥 <strong>Analyse complète + FRICTION</strong> (NOUVEAU!)</li>
-            <li><strong>Comparaison</strong>: Analyse multi-expériences</li>
-            <li><strong>Reproductibilité</strong>: Détection d'anomalies</li>
-            <li><strong>Prédiction</strong>: Modèles prédictifs</li>
-            <li><strong>Rapport</strong>: Génération automatique de rapports</li>
-        </ul>
-        
-        <h3>🔥 NOUVEAUTÉ - Analyse de Friction:</h3>
-        <ul>
-            <li><strong>μ cinétique</strong>: Coefficient de friction cinétique grain-sphère</li>
-            <li><strong>μ roulement</strong>: Coefficient de résistance au roulement pur</li>
-            <li><strong>μ énergétique</strong>: Basé sur la dissipation d'énergie</li>
-            <li><strong>Analyse de trace</strong>: δ/R, volume déplacé, indices géométriques</li>
-            <li><strong>Comparaison littérature</strong>: Van Wal (2017), Darbois Texier (2018)</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-
-# === SIDEBAR - EXPERIMENTS MANAGEMENT ===
-
-# Sidebar - Show saved experiments
-if st.session_state.experiments:
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 💾 Expériences Sauvegardées")
-    for exp_name, exp in st.session_state.experiments.items():
-        meta = exp['metadata']
-        st.sidebar.markdown(f"""
-        <div style="background: #f8f9fa; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; font-size: 0.9rem;">
-            <strong>{exp_name}</strong><br>
-            💧 Eau: {meta['water_content']}%<br>
-            ⚪ Type: {meta['sphere_type']}<br>
-            ✅ Succès: {meta['success_rate']:.1f}%
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Quick management
-    st.sidebar.markdown("#### 🗂️ Gestion Rapide")
-    if st.sidebar.button("🧹 Effacer toutes les expériences"):
-        st.session_state.experiments = {}
-        st.success("Toutes les expériences effacées!")
-        st.rerun()
-else:
-    st.sidebar.markdown("---")
-    st.sidebar.info("💡 Chargez des expériences depuis la section de données pour les comparer et analyser.")
-
-# NEW: Friction info in sidebar
-st.sidebar.markdown("---")
-st.sidebar.markdown("""
-### 🔥 Nouvelle Analyse Friction
-<div style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); padding: 1rem; border-radius: 8px; color: white; font-size: 0.9rem;">
-    <strong>🎯 Coefficients calculés:</strong><br>
-    • μ cinétique (friction directe)<br>
-    • μ roulement (résistance pure)<br>
-    • μ énergétique (dissipation)<br>
-    • Analyse trace (δ/R, géométrie)<br>
-    <br>
-    <strong>📊 Disponible dans Code 3!</strong>
-</div>
-""", unsafe_allow_html=True)
-
-# === FOOTER ===
-
-# Footer
-st.markdown("---")
-st.markdown("""
-<div style="text-align: center; color: #6c757d; padding: 1rem;">
-    <h4>🎓 Plateforme d'Analyse de Résistance au Roulement des Sphères</h4>
-    <p>Développée pour l'analyse de la résistance au roulement des sphères sur matériau granulaire humide</p>
-    <p><strong>Institution:</strong> Department of Cosmic Earth Science, Graduate School of Science, Osaka University</p>
-    <p><strong>Innovation:</strong> Première étude de l'effet de l'humidité + <strong>🔥 Analyse de friction grain-sphère</strong></p>
-    <p><strong>🔥 NOUVEAU:</strong> Calcul direct des coefficients de friction à partir des données vidéo!</p>
-</div>
-""", unsafe_allow_html=True)
