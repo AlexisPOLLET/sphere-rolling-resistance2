@@ -1676,7 +1676,7 @@ Distance totale: {friction_results['total_distance']*1000:.2f} mm
         else:
             st.error("❌ Impossible de calculer les métriques - données insuffisantes")
     
-    st.markdown("</div></div>", unsafe_allow_html=True)
+st.markdown("</div></div>", unsafe_allow_html=True)
     
     # ===== REPRODUCIBILITY ANALYSIS =====
     elif analysis_type == "🔄 Analyse de Reproductibilité":
