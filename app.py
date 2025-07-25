@@ -1413,245 +1413,245 @@ elif analysis_type == "🔬 Code 3 : Analyse Complète + Friction":
 
     st.markdown("</div></div>", unsafe_allow_html=True)
                 
-                # Advanced visualizations with friction analysis integrated
-                st.markdown("### 📈 Visualisations Avancées + Analyse de Friction")
-                
-                fig_advanced = make_subplots(
-                    rows=4, cols=2,
-                    subplot_titles=('Vitesse Lissée vs Temps', 'Accélération vs Temps',
-                                   'Énergies Cinétiques', 'Krr Instantané',
-                                   'Puissance de Résistance', 'Forces',
-                                   'Coefficients de Friction μ', 'Corrélation Force-Vitesse'),
-                    vertical_spacing=0.06,
-                    specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                           [{"secondary_y": False}, {"secondary_y": False}],
-                           [{"secondary_y": False}, {"secondary_y": False}],
-                           [{"secondary_y": False}, {"secondary_y": False}]]
-                )
-                
-                # 1. Velocity plot
-                fig_advanced.add_trace(
-                    go.Scatter(x=metrics['time'], y=metrics['velocity']*1000, 
-                             mode='lines', line=dict(color='blue', width=2), name='Vitesse'),
-                    row=1, col=1
-                )
-                
-                # 2. Acceleration plot
-                fig_advanced.add_trace(
-                    go.Scatter(x=metrics['time'], y=metrics['acceleration']*1000,
-                             mode='lines', line=dict(color='red', width=2), name='Accélération'),
-                    row=1, col=2
-                )
-                
-                # 3. Energy plots
-                E_trans = 0.5 * (mass_g/1000) * metrics['velocity']**2
-                I = j_factor * (mass_g/1000) * (radius_mm/1000)**2
-                omega = metrics['velocity'] / (radius_mm/1000)
-                E_rot = 0.5 * I * omega**2
-                E_total = E_trans + E_rot
-                
-                fig_advanced.add_trace(
-                    go.Scatter(x=metrics['time'], y=E_trans*1000, mode='lines', 
-                             line=dict(color='blue', width=2), name='Translation'),
-                    row=2, col=1
-                )
-                fig_advanced.add_trace(
-                    go.Scatter(x=metrics['time'], y=E_rot*1000, mode='lines', 
-                             line=dict(color='red', width=2), name='Rotation'),
-                    row=2, col=1
-                )
-                fig_advanced.add_trace(
-                    go.Scatter(x=metrics['time'], y=E_total*1000, mode='lines', 
-                             line=dict(color='black', width=3), name='Total'),
-                    row=2, col=1
-                )
-                
-                # 4. Instantaneous Krr
-                Krr_inst = np.abs(metrics['resistance_force']) / ((mass_g/1000) * 9.81)
-                avg_krr = np.mean(Krr_inst)
-                fig_advanced.add_trace(
-                    go.Scatter(x=metrics['time'], y=Krr_inst, mode='lines', 
-                             line=dict(color='purple', width=2), name='Krr'),
-                    row=2, col=2
-                )
-                fig_advanced.add_hline(y=avg_krr, line_dash="dash", line_color="orange", row=2, col=2)
-                
-                # 5. Power plot
-                fig_advanced.add_trace(
-                    go.Scatter(x=metrics['time'], y=metrics['power']*1000, mode='lines', 
-                             line=dict(color='green', width=2), name='Puissance'),
-                    row=3, col=1
-                )
-                
-                # 6. Forces plot
-                F_gravity = (mass_g/1000) * 9.81 * np.sin(np.radians(angle_deg_adv))
-                fig_advanced.add_trace(
-                    go.Scatter(x=metrics['time'], y=metrics['resistance_force']*1000, mode='lines', 
-                             line=dict(color='red', width=2), name='F_résistance'),
-                    row=3, col=2
-                )
-                fig_advanced.add_hline(y=F_gravity*1000, line_dash="dash", line_color="blue", row=3, col=2)
-                
-                # 7. NEW: Friction coefficients
-                if friction_results:
-                    fig_advanced.add_trace(
-                        go.Scatter(x=friction_results['time'], y=friction_results['mu_kinetic_series'], 
-                                  mode='lines', name='μ cinétique',
-                                  line=dict(color='darkred', width=2)),
-                        row=4, col=1
-                    )
-                    fig_advanced.add_trace(
-                        go.Scatter(x=friction_results['time'], y=friction_results['mu_rolling_series'], 
-                                  mode='lines', name='μ roulement',
-                                  line=dict(color='orange', width=2)),
-                        row=4, col=1
-                    )
-                    fig_advanced.add_hline(y=friction_results['mu_kinetic_avg'], 
-                                          line_dash="dash", line_color="darkred", row=4, col=1)
-                
-                # 8. NEW: Force vs Velocity correlation
-                if friction_results:
-                    fig_advanced.add_trace(
-                        go.Scatter(x=friction_results['velocity']*1000, 
-                                  y=friction_results['F_resistance_series']*1000,
-                                  mode='markers', name='F vs v',
-                                  marker=dict(color='darkblue', size=4, opacity=0.7)),
-                        row=4, col=2
-                    )
-                
-                # Update layout
-                fig_advanced.update_layout(height=1200, showlegend=False)
-                fig_advanced.update_xaxes(title_text="Temps (s)")
-                fig_advanced.update_yaxes(title_text="Vitesse (mm/s)", row=1, col=1)
-                fig_advanced.update_yaxes(title_text="Accélération (mm/s²)", row=1, col=2)
-                fig_advanced.update_yaxes(title_text="Énergie (mJ)", row=2, col=1)
-                fig_advanced.update_yaxes(title_text="Coefficient Krr", row=2, col=2)
-                fig_advanced.update_yaxes(title_text="Puissance (mW)", row=3, col=1)
-                fig_advanced.update_yaxes(title_text="Force (mN)", row=3, col=2)
-                fig_advanced.update_yaxes(title_text="Coefficient de Friction", row=4, col=1)
-                fig_advanced.update_yaxes(title_text="Force Résistance (mN)", row=4, col=2)
-                
-                st.plotly_chart(fig_advanced, use_container_width=True)
-                
-                # Physical interpretation with friction insights
-                st.markdown("### 🧠 Interprétation Physique + Friction")
-                
-                coherence_col1, coherence_col2 = st.columns(2)
-                
-                with coherence_col1:
-                    st.markdown("**Cohérence avec Van Wal (2017)**")
-                    if 0.03 <= metrics['krr'] <= 0.10:
-                        st.markdown(f'<div class="status-success">✅ Krr = {metrics["krr"]:.6f} cohérent avec littérature (0.05-0.07)</div>', unsafe_allow_html=True)
-                    elif metrics['krr'] < 0:
-                        st.markdown(f'<div class="status-error">❌ Krr négatif = {metrics["krr"]:.6f} - Sphère accélère</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div class="status-warning">⚠️ Krr = {metrics["krr"]:.6f} différent de la littérature</div>', unsafe_allow_html=True)
-                    
-                    # NEW: Friction analysis
-                    if friction_results:
-                        st.markdown("**Analyse de Friction**")
-                        if friction_results['mu_kinetic_avg'] > 0.1:
-                            st.markdown('<div class="status-warning">⚠️ Friction élevée - substrat très résistant</div>', unsafe_allow_html=True)
-                        elif friction_results['mu_kinetic_avg'] > 0.05:
-                            st.markdown('<div class="status-success">ℹ️ Friction modérée - cohérent avec attentes</div>', unsafe_allow_html=True)
-                        else:
-                            st.markdown('<div class="status-success">✅ Friction faible - roulement efficace</div>', unsafe_allow_html=True)
-                
-                with coherence_col2:
-                    st.markdown("**Bilan Énergétique**")
-                    energy_ratio = (metrics['energy_dissipated'] / metrics['energy_initial']) * 100 if metrics['energy_initial'] > 0 else 0
-                    st.markdown(f"""
-                    <div class="metric-item">
-                        <div class="metric-value">{energy_ratio:.1f}%</div>
-                        <div class="metric-label">Énergie dissipée</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if 10 <= energy_ratio <= 90:
-                        st.markdown('<div class="status-success">✅ Dissipation énergétique cohérente</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('<div class="status-warning">⚠️ Dissipation énergétique inhabituelle</div>', unsafe_allow_html=True)
-                    
-                    # NEW: Effect of humidity
-                    if friction_results:
-                        st.markdown("**Effet de l'Humidité Attendu**")
-                        st.markdown(f"""
-                        **Teneur en eau actuelle :** {water_content}%
+                        # Advanced visualizations with friction analysis integrated
+                        st.markdown("### 📈 Visualisations Avancées + Analyse de Friction")
                         
-                        **Votre résultat μ = {friction_results['mu_kinetic_avg']:.4f}**
+                        fig_advanced = make_subplots(
+                            rows=4, cols=2,
+                            subplot_titles=('Vitesse Lissée vs Temps', 'Accélération vs Temps',
+                                           'Énergies Cinétiques', 'Krr Instantané',
+                                           'Puissance de Résistance', 'Forces',
+                                           'Coefficients de Friction μ', 'Corrélation Force-Vitesse'),
+                            vertical_spacing=0.06,
+                            specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                                   [{"secondary_y": False}, {"secondary_y": False}],
+                                   [{"secondary_y": False}, {"secondary_y": False}],
+                                   [{"secondary_y": False}, {"secondary_y": False}]]
+                        )
                         
-                        **Effets physiques attendus :**
-                        - 💧 **0-5%** : Friction minimale (grains secs)
-                        - 🌊 **5-15%** : Augmentation (ponts capillaires)
-                        - 🌧️ **15-25%** : Maximum puis diminution (lubrification)
-                        """)
-                
-                # Export enhanced options
-                st.markdown("### 💾 Export des Résultats Complets + Friction")
-                
-                export_col1, export_col2, export_col3 = st.columns(3)
-                
-                with export_col1:
-                    # Enhanced basic results with friction
-                    enhanced_results = pd.DataFrame({
-                        'Parametre': ['Krr', 'Vitesse_Max_mm/s', 'Distance_mm', 'Duree_s', 'Efficacite_Energie_%',
-                                     'μ_Cinétique', 'μ_Roulement', 'μ_Énergétique', 'Force_Normale_mN'],
-                        'Valeur': [
-                            metrics['krr'],
-                            metrics['max_velocity']*1000,
-                            metrics['distance']*1000,
-                            metrics['duration'],
-                            metrics['energy_efficiency'],
-                            friction_results['mu_kinetic_avg'] if friction_results else None,
-                            friction_results['mu_rolling_avg'] if friction_results else None,
-                            friction_results['mu_energetic'] if friction_results else None,
-                            friction_results['F_normal']*1000 if friction_results else None
-                        ]
-                    })
-                    
-                    csv_enhanced = enhanced_results.to_csv(index=False)
-                    st.download_button(
-                        label="📋 Résultats + Friction (CSV)",
-                        data=csv_enhanced,
-                        file_name="resultats_avec_friction.csv",
-                        mime="text/csv"
-                    )
-                
-                with export_col2:
-                    # Enhanced detailed data with friction
-                    detailed_data = pd.DataFrame({
-                        'temps_s': metrics['time'],
-                        'vitesse_mm_s': metrics['velocity']*1000,
-                        'acceleration_mm_s2': metrics['acceleration']*1000,
-                        'force_resistance_mN': metrics['resistance_force']*1000,
-                        'puissance_mW': metrics['power']*1000,
-                        'energie_cinetique_mJ': metrics['energy_kinetic']*1000
-                    })
-                    
-                    # Add friction data if available
-                    if friction_results:
-                        friction_data = pd.DataFrame({
-                            'mu_kinetic': friction_results['mu_kinetic_series'],
-                            'mu_rolling': friction_results['mu_rolling_series'],
-                            'F_normal_mN': [friction_results['F_normal']*1000] * len(friction_results['mu_kinetic_series'])
-                        })
-                        # Ensure same length
-                        min_len = min(len(detailed_data), len(friction_data))
-                        detailed_data = detailed_data.iloc[:min_len]
-                        friction_data = friction_data.iloc[:min_len]
-                        detailed_data = pd.concat([detailed_data, friction_data], axis=1)
-                    
-                    csv_detailed_friction = detailed_data.to_csv(index=False)
-                    st.download_button(
-                        label="📈 Données Temporelles + Friction (CSV)",
-                        data=csv_detailed_friction,
-                        file_name="donnees_temporelles_friction.csv",
-                        mime="text/csv"
-                    )
-                
-                with export_col3:
-                    # Comprehensive friction report
-                    friction_report = f"""
+                        # 1. Velocity plot
+                        fig_advanced.add_trace(
+                            go.Scatter(x=metrics['time'], y=metrics['velocity']*1000, 
+                                     mode='lines', line=dict(color='blue', width=2), name='Vitesse'),
+                            row=1, col=1
+                        )
+                        
+                        # 2. Acceleration plot
+                        fig_advanced.add_trace(
+                            go.Scatter(x=metrics['time'], y=metrics['acceleration']*1000,
+                                     mode='lines', line=dict(color='red', width=2), name='Accélération'),
+                            row=1, col=2
+                        )
+                        
+                        # 3. Energy plots
+                        E_trans = 0.5 * (mass_g/1000) * metrics['velocity']**2
+                        I = j_factor * (mass_g/1000) * (radius_mm/1000)**2
+                        omega = metrics['velocity'] / (radius_mm/1000)
+                        E_rot = 0.5 * I * omega**2
+                        E_total = E_trans + E_rot
+                        
+                        fig_advanced.add_trace(
+                            go.Scatter(x=metrics['time'], y=E_trans*1000, mode='lines', 
+                                     line=dict(color='blue', width=2), name='Translation'),
+                            row=2, col=1
+                        )
+                        fig_advanced.add_trace(
+                            go.Scatter(x=metrics['time'], y=E_rot*1000, mode='lines', 
+                                     line=dict(color='red', width=2), name='Rotation'),
+                            row=2, col=1
+                        )
+                        fig_advanced.add_trace(
+                            go.Scatter(x=metrics['time'], y=E_total*1000, mode='lines', 
+                                     line=dict(color='black', width=3), name='Total'),
+                            row=2, col=1
+                        )
+                        
+                        # 4. Instantaneous Krr
+                        Krr_inst = np.abs(metrics['resistance_force']) / ((mass_g/1000) * 9.81)
+                        avg_krr = np.mean(Krr_inst)
+                        fig_advanced.add_trace(
+                            go.Scatter(x=metrics['time'], y=Krr_inst, mode='lines', 
+                                     line=dict(color='purple', width=2), name='Krr'),
+                            row=2, col=2
+                        )
+                        fig_advanced.add_hline(y=avg_krr, line_dash="dash", line_color="orange", row=2, col=2)
+                        
+                        # 5. Power plot
+                        fig_advanced.add_trace(
+                            go.Scatter(x=metrics['time'], y=metrics['power']*1000, mode='lines', 
+                                     line=dict(color='green', width=2), name='Puissance'),
+                            row=3, col=1
+                        )
+                        
+                        # 6. Forces plot
+                        F_gravity = (mass_g/1000) * 9.81 * np.sin(np.radians(angle_deg_adv))
+                        fig_advanced.add_trace(
+                            go.Scatter(x=metrics['time'], y=metrics['resistance_force']*1000, mode='lines', 
+                                     line=dict(color='red', width=2), name='F_résistance'),
+                            row=3, col=2
+                        )
+                        fig_advanced.add_hline(y=F_gravity*1000, line_dash="dash", line_color="blue", row=3, col=2)
+                        
+                        # 7. NEW: Friction coefficients
+                        if friction_results:
+                            fig_advanced.add_trace(
+                                go.Scatter(x=friction_results['time'], y=friction_results['mu_kinetic_series'], 
+                                          mode='lines', name='μ cinétique',
+                                          line=dict(color='darkred', width=2)),
+                                row=4, col=1
+                            )
+                            fig_advanced.add_trace(
+                                go.Scatter(x=friction_results['time'], y=friction_results['mu_rolling_series'], 
+                                          mode='lines', name='μ roulement',
+                                          line=dict(color='orange', width=2)),
+                                row=4, col=1
+                            )
+                            fig_advanced.add_hline(y=friction_results['mu_kinetic_avg'], 
+                                                  line_dash="dash", line_color="darkred", row=4, col=1)
+                        
+                        # 8. NEW: Force vs Velocity correlation
+                        if friction_results:
+                            fig_advanced.add_trace(
+                                go.Scatter(x=friction_results['velocity']*1000, 
+                                          y=friction_results['F_resistance_series']*1000,
+                                          mode='markers', name='F vs v',
+                                          marker=dict(color='darkblue', size=4, opacity=0.7)),
+                                row=4, col=2
+                            )
+                        
+                        # Update layout
+                        fig_advanced.update_layout(height=1200, showlegend=False)
+                        fig_advanced.update_xaxes(title_text="Temps (s)")
+                        fig_advanced.update_yaxes(title_text="Vitesse (mm/s)", row=1, col=1)
+                        fig_advanced.update_yaxes(title_text="Accélération (mm/s²)", row=1, col=2)
+                        fig_advanced.update_yaxes(title_text="Énergie (mJ)", row=2, col=1)
+                        fig_advanced.update_yaxes(title_text="Coefficient Krr", row=2, col=2)
+                        fig_advanced.update_yaxes(title_text="Puissance (mW)", row=3, col=1)
+                        fig_advanced.update_yaxes(title_text="Force (mN)", row=3, col=2)
+                        fig_advanced.update_yaxes(title_text="Coefficient de Friction", row=4, col=1)
+                        fig_advanced.update_yaxes(title_text="Force Résistance (mN)", row=4, col=2)
+                        
+                        st.plotly_chart(fig_advanced, use_container_width=True)
+                        
+                        # Physical interpretation with friction insights
+                        st.markdown("### 🧠 Interprétation Physique + Friction")
+                        
+                        coherence_col1, coherence_col2 = st.columns(2)
+                        
+                        with coherence_col1:
+                            st.markdown("**Cohérence avec Van Wal (2017)**")
+                            if 0.03 <= metrics['krr'] <= 0.10:
+                                st.markdown(f'<div class="status-success">✅ Krr = {metrics["krr"]:.6f} cohérent avec littérature (0.05-0.07)</div>', unsafe_allow_html=True)
+                            elif metrics['krr'] < 0:
+                                st.markdown(f'<div class="status-error">❌ Krr négatif = {metrics["krr"]:.6f} - Sphère accélère</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<div class="status-warning">⚠️ Krr = {metrics["krr"]:.6f} différent de la littérature</div>', unsafe_allow_html=True)
+                            
+                            # NEW: Friction analysis
+                            if friction_results:
+                                st.markdown("**Analyse de Friction**")
+                                if friction_results['mu_kinetic_avg'] > 0.1:
+                                    st.markdown('<div class="status-warning">⚠️ Friction élevée - substrat très résistant</div>', unsafe_allow_html=True)
+                                elif friction_results['mu_kinetic_avg'] > 0.05:
+                                    st.markdown('<div class="status-success">ℹ️ Friction modérée - cohérent avec attentes</div>', unsafe_allow_html=True)
+                                else:
+                                    st.markdown('<div class="status-success">✅ Friction faible - roulement efficace</div>', unsafe_allow_html=True)
+                        
+                        with coherence_col2:
+                            st.markdown("**Bilan Énergétique**")
+                            energy_ratio = (metrics['energy_dissipated'] / metrics['energy_initial']) * 100 if metrics['energy_initial'] > 0 else 0
+                            st.markdown(f"""
+                            <div class="metric-item">
+                                <div class="metric-value">{energy_ratio:.1f}%</div>
+                                <div class="metric-label">Énergie dissipée</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            if 10 <= energy_ratio <= 90:
+                                st.markdown('<div class="status-success">✅ Dissipation énergétique cohérente</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<div class="status-warning">⚠️ Dissipation énergétique inhabituelle</div>', unsafe_allow_html=True)
+                            
+                            # NEW: Effect of humidity
+                            if friction_results:
+                                st.markdown("**Effet de l'Humidité Attendu**")
+                                st.markdown(f"""
+                                **Teneur en eau actuelle :** {water_content}%
+                                
+                                **Votre résultat μ = {friction_results['mu_kinetic_avg']:.4f}**
+                                
+                                **Effets physiques attendus :**
+                                - 💧 **0-5%** : Friction minimale (grains secs)
+                                - 🌊 **5-15%** : Augmentation (ponts capillaires)
+                                - 🌧️ **15-25%** : Maximum puis diminution (lubrification)
+                                """)
+                        
+                        # Export enhanced options
+                        st.markdown("### 💾 Export des Résultats Complets + Friction")
+                        
+                        export_col1, export_col2, export_col3 = st.columns(3)
+                        
+                        with export_col1:
+                            # Enhanced basic results with friction
+                            enhanced_results = pd.DataFrame({
+                                'Parametre': ['Krr', 'Vitesse_Max_mm/s', 'Distance_mm', 'Duree_s', 'Efficacite_Energie_%',
+                                             'μ_Cinétique', 'μ_Roulement', 'μ_Énergétique', 'Force_Normale_mN'],
+                                'Valeur': [
+                                    metrics['krr'],
+                                    metrics['max_velocity']*1000,
+                                    metrics['distance']*1000,
+                                    metrics['duration'],
+                                    metrics['energy_efficiency'],
+                                    friction_results['mu_kinetic_avg'] if friction_results else None,
+                                    friction_results['mu_rolling_avg'] if friction_results else None,
+                                    friction_results['mu_energetic'] if friction_results else None,
+                                    friction_results['F_normal']*1000 if friction_results else None
+                                ]
+                            })
+                            
+                            csv_enhanced = enhanced_results.to_csv(index=False)
+                            st.download_button(
+                                label="📋 Résultats + Friction (CSV)",
+                                data=csv_enhanced,
+                                file_name="resultats_avec_friction.csv",
+                                mime="text/csv"
+                            )
+                        
+                        with export_col2:
+                            # Enhanced detailed data with friction
+                            detailed_data = pd.DataFrame({
+                                'temps_s': metrics['time'],
+                                'vitesse_mm_s': metrics['velocity']*1000,
+                                'acceleration_mm_s2': metrics['acceleration']*1000,
+                                'force_resistance_mN': metrics['resistance_force']*1000,
+                                'puissance_mW': metrics['power']*1000,
+                                'energie_cinetique_mJ': metrics['energy_kinetic']*1000
+                            })
+                            
+                            # Add friction data if available
+                            if friction_results:
+                                friction_data = pd.DataFrame({
+                                    'mu_kinetic': friction_results['mu_kinetic_series'],
+                                    'mu_rolling': friction_results['mu_rolling_series'],
+                                    'F_normal_mN': [friction_results['F_normal']*1000] * len(friction_results['mu_kinetic_series'])
+                                })
+                                # Ensure same length
+                                min_len = min(len(detailed_data), len(friction_data))
+                                detailed_data = detailed_data.iloc[:min_len]
+                                friction_data = friction_data.iloc[:min_len]
+                                detailed_data = pd.concat([detailed_data, friction_data], axis=1)
+                            
+                            csv_detailed_friction = detailed_data.to_csv(index=False)
+                            st.download_button(
+                                label="📈 Données Temporelles + Friction (CSV)",
+                                data=csv_detailed_friction,
+                                file_name="donnees_temporelles_friction.csv",
+                                mime="text/csv"
+                            )
+                        
+                        with export_col3:
+                            # Comprehensive friction report
+                            friction_report = f"""
 RAPPORT COMPLET D'ANALYSE DE FRICTION
 
 === PARAMÈTRES EXPÉRIMENTAUX ===
