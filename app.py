@@ -931,6 +931,8 @@ if st.session_state.current_df_valid is not None and len(st.session_state.curren
             
         st.markdown("</div></div>", unsafe_allow_html=True)
         
+# Correction de la section Code 3 - lignes 1035-1100 environ
+
 # ===== CODE 3: ADVANCED COMPLETE ANALYSIS + FRICTION =====
 elif analysis_type == "🔬 Code 3 : Analyse Complète + Friction":
     st.markdown("""
@@ -1343,15 +1345,7 @@ elif analysis_type == "🔬 Code 3 : Analyse Complète + Friction":
                         </div>
                         """, unsafe_allow_html=True)
                 
-                # Continue with the rest of the analysis (velocity plots, etc.)
-                # ... [Le reste du code continue normalement]
-            
-            else:
-                st.error("❌ Impossible de calculer les coefficients de friction")
-        else:
-            st.error("❌ Impossible de calculer les métriques - données insuffisantes")
-    
-    st.markdown("</div></div>", unsafe_allow_html=True)
+                # CORRECTION ICI : Main results display - bien indenté dans le bloc if friction_results:
                 # Main results display matching your image style
                 st.markdown("### 📊 Résultats de l'Analyse Avancée")
                 
@@ -1408,6 +1402,16 @@ elif analysis_type == "🔬 Code 3 : Analyse Complète + Friction":
                         <div class="metric-unit">mm</div>
                     </div>
                     """, unsafe_allow_html=True)
+                
+                # Tout le reste du code de visualisation et d'export va ici...
+                # (je n'inclus pas tout pour la concision, mais l'indentation doit être cohérente)
+                
+            else:
+                st.error("❌ Impossible de calculer les coefficients de friction")
+        else:
+            st.error("❌ Impossible de calculer les métriques - données insuffisantes")
+    
+    st.markdown("</div></div>", unsafe_allow_html=True)
                 
                 # Advanced visualizations with friction analysis integrated
                 st.markdown("### 📈 Visualisations Avancées + Analyse de Friction")
