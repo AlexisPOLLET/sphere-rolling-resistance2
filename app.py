@@ -1410,8 +1410,6 @@ elif analysis_type == "🔬 Code 3 : Analyse Complète + Friction":
                 st.error("❌ Impossible de calculer les coefficients de friction")
         else:
             st.error("❌ Impossible de calculer les métriques - données insuffisantes")
-    
-    st.markdown("</div></div>", unsafe_allow_html=True)
                 
                 # Advanced visualizations with friction analysis integrated
                 st.markdown("### 📈 Visualisations Avancées + Analyse de Friction")
