@@ -8,6 +8,9 @@ import io
 import warnings
 import datetime
 warnings.filterwarnings('ignore')
+from scipy import signal
+from scipy.ndimage import gaussian_filter1d
+from scipy.stats import zscore
 
 # Page configuration
 st.set_page_config(
@@ -1145,7 +1148,251 @@ if (st.session_state.current_df_valid is not None and
                     st.rerun()
         
         # Launch analysis button
-        if st.button("🚀 Lancer l'Analyse Complète + Friction"):
+                if st.button("🚀 Lancer l'Analyse Complète + Friction"):
+            
+            # === NOUVEAU : SECTION DE NETTOYAGE INTERACTIF ===
+            st.markdown("### 🧹 Nettoyage Interactif des Données")
+            st.markdown("*Configurez les paramètres de nettoyage pour supprimer le bruit au début et à la fin des courbes*")
+            
+            # Options de nettoyage dans un expander
+            with st.expander("🔧 Paramètres de Nettoyage", expanded=True):
+                cleaning_col1, cleaning_col2, cleaning_col3 = st.columns(3)
+                
+                with cleaning_col1:
+                    st.markdown("**🎯 Détection des Frontières**")
+                    enable_boundary_cleaning = st.checkbox("Supprimer début/fin", value=True, 
+                                                          help="Supprime le bruit au début et à la fin")
+                    velocity_factor = st.slider("Seuil vitesse (%)", 5, 30, 10, 
+                                               help="% de la vitesse médiane pour détecter le mouvement") / 100
+                
+                with cleaning_col2:
+                    st.markdown("**📈 Lissage des Données**")
+                    enable_smoothing = st.checkbox("Lissage des données", value=True)
+                    smooth_method = st.selectbox("Méthode lissage", ["savgol", "gaussian"])
+                    if smooth_method == "savgol":
+                        smooth_window = st.slider("Fenêtre lissage", 3, 15, 7, step=2)
+                    else:
+                        smooth_window = 7  # Par défaut pour gaussian
+                
+                with cleaning_col3:
+                    st.markdown("**🎯 Suppression Outliers**")
+                    enable_outlier_removal = st.checkbox("Supprimer outliers", value=True)
+                    z_threshold = st.slider("Seuil Z-score", 1.5, 4.0, 2.5, step=0.1,
+                                          help="Plus bas = plus strict")
+            
+            # Appliquer le nettoyage étape par étape
+            df_working = df_valid.copy()
+            cleaning_steps = []
+            
+            with st.spinner("🔄 Application du nettoyage..."):
+                
+                # Affichage des données originales
+                original_length = len(df_valid)
+                st.markdown(f"📊 **Données originales :** {original_length} points")
+                
+                # Étape 1: Nettoyage des frontières
+                if enable_boundary_cleaning:
+                    df_working, boundary_info = clean_data_boundaries(
+                        df_working, fps_adv, pixels_per_mm_adv, velocity_factor
+                    )
+                    if "error" not in boundary_info:
+                        cleaning_steps.append({
+                            'step': 'Nettoyage frontières',
+                            'removed': boundary_info['start_removed'] + boundary_info['end_removed'],
+                            'kept': boundary_info['cleaned_length'],
+                            'details': f"Début: -{boundary_info['start_removed']}, Fin: -{boundary_info['end_removed']}"
+                        })
+                    else:
+                        st.error("❌ Erreur nettoyage frontières: " + boundary_info['error'])
+                        df_working = df_valid.copy()  # Revenir aux données originales
+                
+                # Étape 2: Suppression des outliers
+                if enable_outlier_removal and len(df_working) > 10:
+                    before_outlier = len(df_working)
+                    df_working, outliers_removed = remove_outliers_zscore(df_working, z_threshold)
+                    if outliers_removed > 0:
+                        cleaning_steps.append({
+                            'step': 'Suppression outliers',
+                            'removed': outliers_removed,
+                            'kept': len(df_working),
+                            'details': f"Z-score > {z_threshold}"
+                        })
+                
+                # Étape 3: Lissage
+                if enable_smoothing and len(df_working) > 5:
+                    df_working = apply_advanced_smoothing(df_working, smooth_method, smooth_window)
+                    cleaning_steps.append({
+                        'step': 'Lissage',
+                        'removed': 0,
+                        'kept': len(df_working),
+                        'details': f"{smooth_method} (fenêtre {smooth_window})"
+                    })
+            
+            # Résumé du nettoyage dans une belle présentation
+            if cleaning_steps:
+                st.markdown("#### 📋 Résumé du Nettoyage")
+                
+                summary_col1, summary_col2, summary_col3 = st.columns(3)
+                
+                with summary_col1:
+                    st.markdown(f"""
+                    <div class="metric-item">
+                        <div class="metric-value">{original_length}</div>
+                        <div class="metric-label">Points Originaux</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with summary_col2:
+                    final_length = len(df_working)
+                    st.markdown(f"""
+                    <div class="metric-item">
+                        <div class="metric-value">{final_length}</div>
+                        <div class="metric-label">Points Finaux</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with summary_col3:
+                    reduction = (1 - final_length/original_length) * 100 if original_length > 0 else 0
+                    st.markdown(f"""
+                    <div class="metric-item">
+                        <div class="metric-value">{reduction:.1f}%</div>
+                        <div class="metric-label">Bruit Supprimé</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Détails des étapes
+                for i, step in enumerate(cleaning_steps, 1):
+                    if step['removed'] > 0:
+                        st.markdown(f"**{i}.** ✅ {step['step']}: -{step['removed']} points ({step['details']})")
+                    else:
+                        st.markdown(f"**{i}.** ✅ {step['step']}: {step['details']}")
+            
+            # Visualisation de comparaison AVANT/APRÈS
+            st.markdown("#### 📊 Comparaison Avant/Après Nettoyage")
+            
+            # Créer la figure de comparaison
+            fig_comparison = make_subplots(
+                rows=2, cols=2,
+                subplot_titles=('Vitesse - Original', 'Vitesse - Nettoyé', 
+                               'Position X - Original', 'Position X - Nettoyé'),
+                specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                       [{"secondary_y": False}, {"secondary_y": False}]]
+            )
+            
+            # Calculer les vitesses pour les données originales
+            dt = 1 / fps_adv
+            x_orig = df_valid['X_center'].values / pixels_per_mm_adv / 1000
+            y_orig = df_valid['Y_center'].values / pixels_per_mm_adv / 1000
+            vx_orig = np.gradient(x_orig, dt)
+            vy_orig = np.gradient(y_orig, dt)
+            v_orig = np.sqrt(vx_orig**2 + vy_orig**2) * 1000  # mm/s
+            
+            # Calculer les vitesses pour les données nettoyées
+            x_clean = df_working['X_center'].values / pixels_per_mm_adv / 1000
+            y_clean = df_working['Y_center'].values / pixels_per_mm_adv / 1000
+            vx_clean = np.gradient(x_clean, dt)
+            vy_clean = np.gradient(y_clean, dt)
+            v_clean = np.sqrt(vx_clean**2 + vy_clean**2) * 1000  # mm/s
+            
+            # Temps
+            t_orig = np.arange(len(df_valid)) * dt
+            t_clean = np.arange(len(df_working)) * dt
+            
+            # Vitesse originale
+            fig_comparison.add_trace(
+                go.Scatter(x=t_orig, y=v_orig, mode='lines', 
+                          line=dict(color='lightcoral', width=1), name='V Original'),
+                row=1, col=1
+            )
+            
+            # Vitesse nettoyée
+            fig_comparison.add_trace(
+                go.Scatter(x=t_clean, y=v_clean, mode='lines',
+                          line=dict(color='darkblue', width=2), name='V Nettoyé'),
+                row=1, col=2
+            )
+            
+            # Position X originale
+            fig_comparison.add_trace(
+                go.Scatter(x=df_valid['Frame'], y=df_valid['X_center'], mode='lines',
+                          line=dict(color='lightcoral', width=1), name='X Original'),
+                row=2, col=1
+            )
+            
+            # Position X nettoyée
+            fig_comparison.add_trace(
+                go.Scatter(x=df_working['Frame'], y=df_working['X_center'], mode='lines',
+                          line=dict(color='darkblue', width=2), name='X Nettoyé'),
+                row=2, col=2
+            )
+            
+            fig_comparison.update_layout(
+                height=600, 
+                showlegend=False,
+                title_text="🔄 Effet du Nettoyage - Suppression du Bruit"
+            )
+            fig_comparison.update_xaxes(title_text="Temps (s)", row=1)
+            fig_comparison.update_xaxes(title_text="Frame", row=2)
+            fig_comparison.update_yaxes(title_text="Vitesse (mm/s)", row=1)
+            fig_comparison.update_yaxes(title_text="Position X (px)", row=2)
+            
+            st.plotly_chart(fig_comparison, use_container_width=True)
+            
+            # Status du nettoyage
+            if len(df_working) >= 10:
+                st.markdown('<div class="status-success">✅ Nettoyage réussi - Analyse continue avec les données nettoyées</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="status-error">❌ Nettoyage trop agressif - Utilisation des données originales</div>', unsafe_allow_html=True)
+                df_working = df_valid.copy()
+            
+            # === CONTINUER AVEC L'ANALYSE NORMALE ===
+            st.markdown("---")  # Séparateur
+            
+            # Maintenant, continuer avec l'analyse normale en utilisant df_working
+            with st.spinner("🧮 Calcul des métriques avancées et analyse de friction..."):
+                metrics = calculate_advanced_metrics(df_working, fps_adv, pixels_per_mm_adv, mass_g, angle_deg_adv)
+            
+            if metrics and metrics['krr'] is not None:
+                
+                # === FRICTION ANALYSIS SECTION ===
+                st.markdown("### 🔥 Analyse de Friction Grain-Sphère")
+                
+                friction_results = calculate_friction_coefficients(
+                    df_working,  # ← Utiliser les données nettoyées
+                    sphere_mass_g=mass_g,
+                    angle_deg=angle_deg_adv,
+                    fps=fps_adv,
+                    pixels_per_mm=pixels_per_mm_adv
+                )
+                
+                # === LE RESTE DU CODE CONTINUE NORMALEMENT ===
+                # (tout le reste de votre Code 3 reste identique, en utilisant df_working au lieu de df_valid)
+                
+                if friction_results:
+                    # Display friction results in nice cards
+                    st.markdown("#### 📊 Coefficients de Friction Calculés")
+                    
+                    friction_col1, friction_col2, friction_col3, friction_col4 = st.columns(4)
+                    
+                    with friction_col1:
+                        st.markdown(f"""
+                        <div class="friction-card">
+                            <h4>🔥 μ Cinétique</h4>
+                            <h2>{friction_results['mu_kinetic_avg']:.4f}</h2>
+                            <p>Friction grain-sphère directe</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # ... continuez avec le reste de votre code existant ...
+                    # IMPORTANT: Remplacez toutes les occurrences de df_valid par df_working
+                    # dans le reste de l'analyse Code 3
+                
+                else:
+                    st.error("❌ Impossible de calculer les coefficients de friction")
+            else:
+                st.error("❌ Impossible de calculer les métriques - données insuffisantes")
+            
+        st.markdown("</div></div>", unsafe_allow_html=True)
             with st.spinner("🧮 Calcul des métriques avancées et analyse de friction..."):
                 metrics = calculate_advanced_metrics(df_valid, fps_adv, pixels_per_mm_adv, mass_g, angle_deg_adv)
             
