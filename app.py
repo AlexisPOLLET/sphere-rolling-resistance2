@@ -1469,9 +1469,9 @@ if (st.session_state.current_df_valid is not None and
             # === CONTINUER AVEC L'ANALYSE NORMALE ===
             st.markdown("---")  # Séparateur
             
-            # Maintenant, continuer avec l'analyse normale en utilisant df_working
-            with st.spinner("🧮 Calcul des métriques avancées et analyse de friction..."):
-                metrics = calculate_advanced_metrics(df_working, fps_adv, pixels_per_mm_adv, mass_g, angle_deg_adv)
+                # Maintenant, continuer avec l'analyse normale en utilisant df_working
+                with st.spinner("🧮 Calcul des métriques avancées et analyse de friction..."):
+                    metrics = calculate_advanced_metrics(df_working, fps_adv, pixels_per_mm_adv, mass_g, angle_deg_adv)
             
             if metrics and metrics['krr'] is not None:
                 
