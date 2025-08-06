@@ -378,7 +378,128 @@ def analyze_trace_friction(depth_mm, width_mm, length_mm, sphere_radius_mm, sphe
         'friction_geometric_index': friction_index,
         'width_to_diameter_ratio': width_mm / (2 * sphere_radius_mm)
     }
+# AJOUTEZ ÉGALEMENT LES NOUVELLES FONCTIONS DE NETTOYAGE AU DÉBUT DU FICHIER
+# (après vos fonctions existantes et avant le header)
 
+def clean_data_boundaries(df_valid, fps=250, pixels_per_mm=5.0, velocity_threshold_factor=0.1):
+    """
+    Nettoie les données en supprimant le bruit au début et à la fin
+    """
+    if len(df_valid) < 10:
+        return df_valid, {"error": "Pas assez de données"}
+    
+    # Conversion en unités physiques
+    dt = 1 / fps
+    x_m = df_valid['X_center'].values / pixels_per_mm / 1000
+    y_m = df_valid['Y_center'].values / pixels_per_mm / 1000
+    
+    # Calcul des vitesses
+    vx = np.gradient(x_m, dt)
+    vy = np.gradient(y_m, dt)
+    v_magnitude = np.sqrt(vx**2 + vy**2)
+    
+    # Seuil adaptatif basé sur la médiane des vitesses
+    v_median = np.median(v_magnitude)
+    v_threshold = v_median * velocity_threshold_factor
+    
+    # Détection du début du mouvement stable
+    start_idx = 0
+    consecutive_count = 0
+    min_consecutive = 5
+    
+    for i, v in enumerate(v_magnitude):
+        if v > v_threshold:
+            consecutive_count += 1
+            if consecutive_count >= min_consecutive:
+                start_idx = i - min_consecutive + 1
+                break
+        else:
+            consecutive_count = 0
+    
+    # Détection de la fin du mouvement stable
+    end_idx = len(v_magnitude) - 1
+    consecutive_count = 0
+    
+    for i in range(len(v_magnitude) - 1, -1, -1):
+        if v_magnitude[i] > v_threshold:
+            consecutive_count += 1
+            if consecutive_count >= min_consecutive:
+                end_idx = i + min_consecutive - 1
+                break
+        else:
+            consecutive_count = 0
+    
+    # S'assurer que end_idx ne dépasse pas
+    end_idx = min(end_idx, len(v_magnitude) - 1)
+    
+    # Vérifier qu'on a assez de données restantes
+    if end_idx - start_idx < 10:
+        return df_valid, {"error": "Trop peu de données après nettoyage"}
+    
+    # Découper les données
+    df_cleaned = df_valid.iloc[start_idx:end_idx+1].copy().reset_index(drop=True)
+    
+    # Informations sur le nettoyage
+    cleaning_info = {
+        "original_length": len(df_valid),
+        "cleaned_length": len(df_cleaned),
+        "start_removed": start_idx,
+        "end_removed": len(df_valid) - end_idx - 1,
+        "velocity_threshold": v_threshold * 1000,
+        "percentage_kept": len(df_cleaned) / len(df_valid) * 100
+    }
+    
+    return df_cleaned, cleaning_info
+
+def apply_advanced_smoothing(df_valid, method='savgol', window=7, polyorder=2):
+    """
+    Applique un lissage avancé aux données
+    """
+    if len(df_valid) < 5:
+        return df_valid
+    
+    df_smooth = df_valid.copy()
+    
+    if method == 'savgol':
+        window = min(window, len(df_valid))
+        if window % 2 == 0:
+            window -= 1
+        window = max(3, window)
+        polyorder = min(polyorder, window - 1)
+        
+        df_smooth['X_center'] = signal.savgol_filter(df_valid['X_center'], window, polyorder)
+        df_smooth['Y_center'] = signal.savgol_filter(df_valid['Y_center'], window, polyorder)
+        
+    elif method == 'gaussian':
+        sigma = 1.0
+        df_smooth['X_center'] = gaussian_filter1d(df_valid['X_center'], sigma=sigma)
+        df_smooth['Y_center'] = gaussian_filter1d(df_valid['Y_center'], sigma=sigma)
+    
+    return df_smooth
+
+def remove_outliers_zscore(df_valid, z_threshold=2.5):
+    """
+    Supprime les outliers basés sur le Z-score
+    """
+    if len(df_valid) < 10:
+        return df_valid, 0
+    
+    # Calculer les vitesses
+    dx = df_valid['X_center'].diff()
+    dy = df_valid['Y_center'].diff()
+    speed = np.sqrt(dx**2 + dy**2)
+    
+    # Calculer Z-score pour la vitesse
+    z_scores = np.abs(zscore(speed.fillna(speed.mean())))
+    
+    # Masque pour les points normaux
+    normal_mask = z_scores <= z_threshold
+    
+    # Appliquer le masque
+    df_cleaned = df_valid[normal_mask].copy().reset_index(drop=True)
+    outliers_removed = len(df_valid) - len(df_cleaned)
+    
+    return df_cleaned, outliers_removed
 # ==================== MAIN APPLICATION ====================
 
 # Header
@@ -1148,7 +1269,7 @@ if (st.session_state.current_df_valid is not None and
                     st.rerun()
         
         # Launch analysis button
-                if st.button("🚀 Lancer l'Analyse Complète + Friction"):
+        if st.button("🚀 Lancer l'Analyse Complète + Friction"):
             
             # === NOUVEAU : SECTION DE NETTOYAGE INTERACTIF ===
             st.markdown("### 🧹 Nettoyage Interactif des Données")
