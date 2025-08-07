@@ -841,236 +841,245 @@ if (st.session_state.current_df_valid is not None and
         st.markdown("</div></div>", unsafe_allow_html=True)
         
     # ===== CODE 2: KRR ANALYSIS =====
-    elif analysis_type == "📊 Code 2 : Analyse Krr":
-        st.markdown("""
-        <div class="analysis-results">
-            <h2 class="results-header">📊 Code 2 : Analyse du Coefficient de Résistance au Roulement (Krr)</h2>
-            <div class="results-content">
+elif analysis_type == "📊 Code 2 : Analyse Krr":
+    st.markdown("""
+    <div class="analysis-results">
+        <h2 class="results-header">📊 Code 2 : Analyse du Coefficient de Résistance au Roulement (Krr)</h2>
+        <div class="results-content">
+    """, unsafe_allow_html=True)
+    
+    # Sphere parameters section
+    st.markdown("### 🔵 Paramètres de la Sphère")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        sphere_radius_mm = st.number_input("Rayon de la sphère (mm)", value=15.0, min_value=1.0, max_value=50.0)
+        sphere_mass_g = st.number_input("Masse de la sphère (g)", value=10.0, min_value=0.1, max_value=1000.0)
+        
+    with col2:
+        sphere_type_selection = st.selectbox("Type de sphère", ["Solide (j=2/5)", "Creuse (j=2/3)"])
+        j_value = 2/5 if "Solide" in sphere_type_selection else 2/3
+        
+        # Density calculation
+        volume_mm3 = (4/3) * np.pi * sphere_radius_mm**3
+        volume_m3 = volume_mm3 * 1e-9
+        mass_kg = sphere_mass_g * 1e-3
+        density_kg_m3 = mass_kg / volume_m3
+        
+        st.markdown(f"""
+        <div class="metric-item">
+            <div class="metric-value">{density_kg_m3:.0f}</div>
+            <div class="metric-label">Densité</div>
+            <div class="metric-unit">kg/m³</div>
+        </div>
         """, unsafe_allow_html=True)
         
-        # Sphere parameters section
-        st.markdown("### 🔵 Paramètres de la Sphère")
-        col1, col2, col3 = st.columns(3)
+    with col3:
+        st.markdown(f"""
+        <div class="metric-item">
+            <div class="metric-value">{j_value:.3f}</div>
+            <div class="metric-label">Facteur d'inertie j</div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        with col1:
-            sphere_radius_mm = st.number_input("Rayon de la sphère (mm)", value=15.0, min_value=1.0, max_value=50.0)
-            sphere_mass_g = st.number_input("Masse de la sphère (g)", value=10.0, min_value=0.1, max_value=1000.0)
-            
-        with col2:
-            sphere_type_selection = st.selectbox("Type de sphère", ["Solide (j=2/5)", "Creuse (j=2/3)"])
-            j_value = 2/5 if "Solide" in sphere_type_selection else 2/3
-            
-            # Density calculation
-            volume_mm3 = (4/3) * np.pi * sphere_radius_mm**3
-            volume_m3 = volume_mm3 * 1e-9
-            mass_kg = sphere_mass_g * 1e-3
-            density_kg_m3 = mass_kg / volume_m3
+        st.markdown(f"""
+        <div class="metric-item">
+            <div class="metric-value">{1/(1+j_value):.4f}</div>
+            <div class="metric-label">Facteur (1+j)⁻¹</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Experimental parameters
+    st.markdown("### 📐 Paramètres Expérimentaux")
+    param_col1, param_col2, param_col3 = st.columns(3)
+    
+    with param_col1:
+        fps = st.number_input("FPS de la caméra", value=250.0, min_value=1.0, max_value=1000.0)
+        angle_deg = st.number_input("Angle d'inclinaison (°)", value=15.0, min_value=0.1, max_value=45.0)
+        
+    with param_col2:
+        # Automatic calibration
+        if len(df_valid) > 0:
+            avg_radius_pixels = df_valid['Radius'].mean()
+            auto_calibration = avg_radius_pixels / sphere_radius_mm
             
             st.markdown(f"""
             <div class="metric-item">
-                <div class="metric-value">{density_kg_m3:.0f}</div>
-                <div class="metric-label">Densité</div>
-                <div class="metric-unit">kg/m³</div>
+                <div class="metric-value">{auto_calibration:.2f}</div>
+                <div class="metric-label">Calibration auto</div>
+                <div class="metric-unit">px/mm</div>
             </div>
             """, unsafe_allow_html=True)
             
-        with col3:
-            st.markdown(f"""
-            <div class="metric-item">
-                <div class="metric-value">{j_value:.3f}</div>
-                <div class="metric-label">Facteur d'inertie j</div>
-            </div>
-            """, unsafe_allow_html=True)
+            use_auto_cal = st.checkbox("Utiliser calibration automatique", value=True)
+            if use_auto_cal:
+                pixels_per_mm = auto_calibration
+            else:
+                pixels_per_mm = st.number_input("Calibration (px/mm)", value=auto_calibration, min_value=0.1)
+        else:
+            pixels_per_mm = st.number_input("Calibration (px/mm)", value=5.0, min_value=0.1)
             
-            st.markdown(f"""
-            <div class="metric-item">
-                <div class="metric-value">{1/(1+j_value):.4f}</div>
-                <div class="metric-label">Facteur (1+j)⁻¹</div>
-            </div>
-            """, unsafe_allow_html=True)
+    with param_col3:
+        water_content_analysis = st.number_input("Teneur en eau (%)", value=water_content, min_value=0.0, max_value=100.0)
+    
+    # Kinematic calculations
+    st.markdown("### 🧮 Calculs Cinématiques")
+    
+    if len(df_valid) > 10:
+        # === NOUVEAU: NETTOYAGE DES DONNÉES POUR CODE 2 ===
+        # Filtrer les données pour enlever le bruit du début et de la fin
+        df_clean = df_valid.copy()
         
-        # Experimental parameters
-        st.markdown("### 📐 Paramètres Expérimentaux")
-        param_col1, param_col2, param_col3 = st.columns(3)
+        # Enlever les 5 premiers et 5 derniers points pour éliminer le bruit
+        if len(df_clean) > 20:
+            df_clean = df_clean.iloc[5:-5].reset_index(drop=True)
         
-        with param_col1:
-            fps = st.number_input("FPS de la caméra", value=250.0, min_value=1.0, max_value=1000.0)
-            angle_deg = st.number_input("Angle d'inclinaison (°)", value=15.0, min_value=0.1, max_value=45.0)
+        # Unit conversion
+        dt = 1 / fps
+        
+        # Positions in meters
+        x_mm = df_clean['X_center'].values / pixels_per_mm
+        y_mm = df_clean['Y_center'].values / pixels_per_mm
+        x_m = x_mm / 1000
+        y_m = y_mm / 1000
+        
+        # Time
+        t = np.arange(len(df_clean)) * dt
+        
+        # Velocities
+        vx = np.gradient(x_m, dt)
+        vy = np.gradient(y_m, dt)
+        v_magnitude = np.sqrt(vx**2 + vy**2)
+        
+        # Initial and final velocities
+        n_avg = min(3, len(v_magnitude)//4)
+        v0 = np.mean(v_magnitude[:n_avg])
+        vf = np.mean(v_magnitude[-n_avg:])
+        
+        # Total distance
+        distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
+        total_distance = np.sum(distances)
+        
+        # Calculate Krr coefficient
+        g = 9.81
+        if total_distance > 0:
+            krr = (v0**2 - vf**2) / (2 * g * total_distance)
             
-        with param_col2:
-            # Automatic calibration
-            if len(df_valid) > 0:
-                avg_radius_pixels = df_valid['Radius'].mean()
-                auto_calibration = avg_radius_pixels / sphere_radius_mm
-                
+            # Results display
+            st.markdown("### 📊 Résultats Krr")
+            
+            result_col1, result_col2, result_col3, result_col4 = st.columns(4)
+            
+            with result_col1:
                 st.markdown(f"""
                 <div class="metric-item">
-                    <div class="metric-value">{auto_calibration:.2f}</div>
-                    <div class="metric-label">Calibration auto</div>
-                    <div class="metric-unit">px/mm</div>
+                    <div class="metric-value">{v0*1000:.1f}</div>
+                    <div class="metric-label">V₀ (vitesse initiale)</div>
+                    <div class="metric-unit">mm/s</div>
+                </div>
+                """, unsafe_allow_html=True)
+                st.caption(f"{v0:.4f} m/s")
+            
+            with result_col2:
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{vf*1000:.1f}</div>
+                    <div class="metric-label">Vf (vitesse finale)</div>
+                    <div class="metric-unit">mm/s</div>
+                </div>
+                """, unsafe_allow_html=True)
+                st.caption(f"{vf:.4f} m/s")
+            
+            with result_col3:
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{total_distance*1000:.1f}</div>
+                    <div class="metric-label">Distance totale</div>
+                    <div class="metric-unit">mm</div>
+                </div>
+                """, unsafe_allow_html=True)
+                st.caption(f"{total_distance:.4f} m")
+            
+            with result_col4:
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{krr:.6f}</div>
+                    <div class="metric-label"><strong>Coefficient Krr</strong></div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                use_auto_cal = st.checkbox("Utiliser calibration automatique", value=True)
-                if use_auto_cal:
-                    pixels_per_mm = auto_calibration
+                # Validation with literature
+                if 0.03 <= krr <= 0.10:
+                    st.markdown('<div class="status-success">✅ Cohérent avec Van Wal (2017)</div>', unsafe_allow_html=True)
+                elif krr < 0:
+                    st.markdown('<div class="status-error">⚠️ Krr négatif - sphère accélère</div>', unsafe_allow_html=True)
                 else:
-                    pixels_per_mm = st.number_input("Calibration (px/mm)", value=auto_calibration, min_value=0.1)
-            else:
-                pixels_per_mm = st.number_input("Calibration (px/mm)", value=5.0, min_value=0.1)
-                
-        with param_col3:
-            water_content_analysis = st.number_input("Teneur en eau (%)", value=water_content, min_value=0.0, max_value=100.0)
-        
-        # Kinematic calculations
-        st.markdown("### 🧮 Calculs Cinématiques")
-        
-        if len(df_valid) > 10:
-            # Unit conversion
-            dt = 1 / fps
+                    st.markdown('<div class="status-warning">⚠️ Différent de la littérature</div>', unsafe_allow_html=True)
             
-            # Positions in meters
-            x_mm = df_valid['X_center'].values / pixels_per_mm
-            y_mm = df_valid['Y_center'].values / pixels_per_mm
-            x_m = x_mm / 1000
-            y_m = y_mm / 1000
+            # Trajectory and velocity visualization (4 subplots) - DONNÉES NETTOYÉES
+            st.markdown("### 🎯 Trajectoire et Profil de Vitesse")
             
-            # Time
-            t = np.arange(len(df_valid)) * dt
+            fig_krr = make_subplots(
+                rows=2, cols=2,
+                subplot_titles=('Vitesse vs Temps (Nettoyée)', 'Accélération vs Temps', 
+                               'Trajectoire', 'Composantes de Vitesse'),
+                specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                       [{"secondary_y": False}, {"secondary_y": False}]]
+            )
             
-            # Velocities
-            vx = np.gradient(x_m, dt)
-            vy = np.gradient(y_m, dt)
-            v_magnitude = np.sqrt(vx**2 + vy**2)
+            # Velocity plot with reference lines - DONNÉES NETTOYÉES
+            fig_krr.add_trace(
+                go.Scatter(x=t, y=v_magnitude*1000, mode='lines', 
+                          line=dict(color='blue', width=2), name='Vitesse'),
+                row=1, col=1
+            )
+            fig_krr.add_hline(y=v0*1000, line_dash="dash", line_color="green", row=1, col=1)
+            fig_krr.add_hline(y=vf*1000, line_dash="dash", line_color="red", row=1, col=1)
             
-            # Initial and final velocities
-            n_avg = min(3, len(v_magnitude)//4)
-            v0 = np.mean(v_magnitude[:n_avg])
-            vf = np.mean(v_magnitude[-n_avg:])
+            # Acceleration
+            acceleration = np.gradient(v_magnitude, dt)
+            fig_krr.add_trace(
+                go.Scatter(x=t, y=acceleration*1000, mode='lines',
+                          line=dict(color='red', width=2), name='Accélération'),
+                row=1, col=2
+            )
             
-            # Total distance
-            distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
-            total_distance = np.sum(distances)
+            # Trajectory
+            fig_krr.add_trace(
+                go.Scatter(x=x_mm, y=y_mm, mode='markers+lines',
+                          marker=dict(color=t, colorscale='viridis', size=4),
+                          line=dict(width=2), name='Trajectoire'),
+                row=2, col=1
+            )
             
-            # Calculate Krr coefficient
-            g = 9.81
-            if total_distance > 0:
-                krr = (v0**2 - vf**2) / (2 * g * total_distance)
-                
-                # Results display matching your image layout
-                st.markdown("### 📊 Résultats Krr")
-                
-                result_col1, result_col2, result_col3, result_col4 = st.columns(4)
-                
-                with result_col1:
-                    st.markdown(f"""
-                    <div class="metric-item">
-                        <div class="metric-value">{v0*1000:.1f}</div>
-                        <div class="metric-label">V₀ (vitesse initiale)</div>
-                        <div class="metric-unit">mm/s</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.caption(f"{v0:.4f} m/s")
-                
-                with result_col2:
-                    st.markdown(f"""
-                    <div class="metric-item">
-                        <div class="metric-value">{vf*1000:.1f}</div>
-                        <div class="metric-label">Vf (vitesse finale)</div>
-                        <div class="metric-unit">mm/s</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.caption(f"{vf:.4f} m/s")
-                
-                with result_col3:
-                    st.markdown(f"""
-                    <div class="metric-item">
-                        <div class="metric-value">{total_distance*1000:.1f}</div>
-                        <div class="metric-label">Distance totale</div>
-                        <div class="metric-unit">mm</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.caption(f"{total_distance:.4f} m")
-                
-                with result_col4:
-                    st.markdown(f"""
-                    <div class="metric-item">
-                        <div class="metric-value">{krr:.6f}</div>
-                        <div class="metric-label"><strong>Coefficient Krr</strong></div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Validation with literature
-                    if 0.03 <= krr <= 0.10:
-                        st.markdown('<div class="status-success">✅ Cohérent avec Van Wal (2017)</div>', unsafe_allow_html=True)
-                    elif krr < 0:
-                        st.markdown('<div class="status-error">⚠️ Krr négatif - sphère accélère</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('<div class="status-warning">⚠️ Différent de la littérature</div>', unsafe_allow_html=True)
-                
-                # Trajectory and velocity visualization (4 subplots)
-                st.markdown("### 🎯 Trajectoire et Profil de Vitesse")
-                
-                fig_krr = make_subplots(
-                    rows=2, cols=2,
-                    subplot_titles=('Vitesse vs Temps', 'Accélération vs Temps', 
-                                   'Trajectoire', 'Composantes de Vitesse'),
-                    specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                           [{"secondary_y": False}, {"secondary_y": False}]]
-                )
-                
-                # Velocity plot with reference lines
-                fig_krr.add_trace(
-                    go.Scatter(x=t, y=v_magnitude*1000, mode='lines', 
-                              line=dict(color='blue', width=2), name='Vitesse'),
-                    row=1, col=1
-                )
-                fig_krr.add_hline(y=v0*1000, line_dash="dash", line_color="green", row=1, col=1)
-                fig_krr.add_hline(y=vf*1000, line_dash="dash", line_color="red", row=1, col=1)
-                
-                # Acceleration
-                acceleration = np.gradient(v_magnitude, dt)
-                fig_krr.add_trace(
-                    go.Scatter(x=t, y=acceleration*1000, mode='lines',
-                              line=dict(color='red', width=2), name='Accélération'),
-                    row=1, col=2
-                )
-                
-                # Trajectory
-                fig_krr.add_trace(
-                    go.Scatter(x=x_mm, y=y_mm, mode='markers+lines',
-                              marker=dict(color=t, colorscale='viridis', size=4),
-                              line=dict(width=2), name='Trajectoire'),
-                    row=2, col=1
-                )
-                
-                # Velocity components
-                fig_krr.add_trace(
-                    go.Scatter(x=t, y=np.abs(vx)*1000, mode='lines',
-                              line=dict(color='blue', width=2), name='|Vx|'),
-                    row=2, col=2
-                )
-                fig_krr.add_trace(
-                    go.Scatter(x=t, y=vy*1000, mode='lines',
-                              line=dict(color='red', width=2), name='Vy'),
-                    row=2, col=2
-                )
-                
-                fig_krr.update_layout(height=700, showlegend=False)
-                fig_krr.update_xaxes(title_text="Temps (s)")
-                fig_krr.update_yaxes(title_text="Vitesse (mm/s)", row=1, col=1)
-                fig_krr.update_yaxes(title_text="Accélération (mm/s²)", row=1, col=2)
-                fig_krr.update_yaxes(title_text="Y (mm)", row=2, col=1)
-                fig_krr.update_yaxes(title_text="Vitesse (mm/s)", row=2, col=2)
-                
-                st.plotly_chart(fig_krr, use_container_width=True)
-                
-            else:
-                st.error("❌ Distance parcourue nulle - impossible de calculer Krr")
+            # Velocity components
+            fig_krr.add_trace(
+                go.Scatter(x=t, y=np.abs(vx)*1000, mode='lines',
+                          line=dict(color='blue', width=2), name='|Vx|'),
+                row=2, col=2
+            )
+            fig_krr.add_trace(
+                go.Scatter(x=t, y=vy*1000, mode='lines',
+                          line=dict(color='red', width=2), name='Vy'),
+                row=2, col=2
+            )
+            
+            fig_krr.update_layout(height=700, showlegend=False)
+            fig_krr.update_xaxes(title_text="Temps (s)")
+            fig_krr.update_yaxes(title_text="Vitesse (mm/s)", row=1, col=1)
+            fig_krr.update_yaxes(title_text="Accélération (mm/s²)", row=1, col=2)
+            fig_krr.update_yaxes(title_text="Y (mm)", row=2, col=1)
+            fig_krr.update_yaxes(title_text="Vitesse (mm/s)", row=2, col=2)
+            
+            st.plotly_chart(fig_krr, use_container_width=True)
+            
         else:
-            st.warning("⚠️ Pas assez de données valides pour l'analyse Krr")
-            
-        st.markdown("</div></div>", unsafe_allow_html=True)
+            st.error("❌ Distance parcourue nulle - impossible de calculer Krr")
+    else:
+        st.warning("⚠️ Pas assez de données valides pour l'analyse Krr")
+        
+    st.markdown("</div></div>", unsafe_allow_html=True)
+    
 # ===== CODE 3: ADVANCED COMPLETE ANALYSIS + FRICTION =====
 elif analysis_type == "🔬 Code 3 : Analyse Complète + Friction":
     st.markdown("""
@@ -1830,6 +1839,8 @@ Plateforme: Osaka University - Granular Mechanics Lab
                         file_name="rapport_friction_complet.txt",
                         mime="text/plain"
                     )
+                
+                st.success("✅ Analyse de friction terminée!")
                 
             else:
                 st.error("❌ Impossible de calculer les coefficients de friction")
