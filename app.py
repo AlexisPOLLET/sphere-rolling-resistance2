@@ -673,7 +673,174 @@ if (st.session_state.current_df_valid is not None and
                     else:
                         st.markdown('<div class="status-warning">⚠️ Krr à vérifier</div>', unsafe_allow_html=True)
                 
-                st.success("✅ Analyse de friction terminée!")
+                # === EXPORT DES DONNÉES NETTOYÉES ===
+                st.markdown("### 💾 Export des Données et Résultats")
+                
+                export_col1, export_col2, export_col3, export_col4 = st.columns(4)
+                
+                with export_col1:
+                    # Export données nettoyées brutes
+                    df_clean_for_export = pd.DataFrame({
+                        'Frame': range(len(metrics['time'])),
+                        'Frame_Original': df_clean['Frame'].values if 'df_clean' in locals() else range(len(metrics['time'])),
+                        'X_center': df_clean['X_center'].values if 'df_clean' in locals() else df_valid['X_center'].iloc[cleaning_info.get('start_removed', 0):len(df_valid)-cleaning_info.get('end_removed', 0)],
+                        'Y_center': df_clean['Y_center'].values if 'df_clean' in locals() else df_valid['Y_center'].iloc[cleaning_info.get('start_removed', 0):len(df_valid)-cleaning_info.get('end_removed', 0)],
+                        'Radius': df_clean['Radius'].values if 'df_clean' in locals() else df_valid['Radius'].iloc[cleaning_info.get('start_removed', 0):len(df_valid)-cleaning_info.get('end_removed', 0)]
+                    })
+                    
+                    csv_cleaned_data = df_clean_for_export.to_csv(index=False)
+                    st.download_button(
+                        label="🧹 Données Nettoyées (CSV)",
+                        data=csv_cleaned_data,
+                        file_name=f"donnees_nettoyees_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        help="Données originales sans les artefacts de début/fin"
+                    )
+                
+                with export_col2:
+                    # Export séries temporelles calculées
+                    temporal_data = pd.DataFrame({
+                        'temps_s': metrics['time'],
+                        'vitesse_mm_s': metrics['velocity'] * 1000,
+                        'acceleration_mm_s2': metrics['acceleration'] * 1000,
+                        'force_resistance_mN': metrics['resistance_force'] * 1000,
+                        'puissance_mW': metrics['power'] * 1000,
+                        'energie_cinetique_mJ': metrics['energy_kinetic'] * 1000,
+                        'mu_kinetic': friction_results['mu_kinetic_series'],
+                        'mu_rolling': friction_results['mu_rolling_series'],
+                        'vitesse_x_mm_s': metrics['vx'] * 1000,
+                        'vitesse_y_mm_s': metrics['vy'] * 1000
+                    })
+                    
+                    csv_temporal = temporal_data.to_csv(index=False)
+                    st.download_button(
+                        label="📈 Séries Temporelles (CSV)",
+                        data=csv_temporal,
+                        file_name=f"series_temporelles_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        help="Toutes les courbes calculées vs temps"
+                    )
+                
+                with export_col3:
+                    # Export résultats synthèses
+                    synthesis_data = pd.DataFrame({
+                        'Parametre': [
+                            'Krr_coefficient', 'vitesse_initiale_mm_s', 'vitesse_finale_mm_s', 
+                            'distance_totale_mm', 'duree_s', 'vitesse_max_mm_s',
+                            'acceleration_max_mm_s2', 'energie_dissipee_mJ', 'efficacite_energie_pourcent',
+                            'mu_cinetique_moyen', 'mu_roulement_moyen', 'mu_energetique',
+                            'force_normale_mN', 'force_resistance_moyenne_mN', 'points_originaux',
+                            'points_nettoyes', 'pourcentage_donnees_gardees', 'points_debut_supprimes',
+                            'points_fin_supprimes'
+                        ],
+                        'Valeur': [
+                            metrics['krr'], metrics['v0'] * 1000, metrics['vf'] * 1000,
+                            metrics['distance'] * 1000, metrics['duration'], metrics['max_velocity'] * 1000,
+                            metrics['max_acceleration'] * 1000, metrics['energy_dissipated'] * 1000, metrics['energy_efficiency'],
+                            friction_results['mu_kinetic_avg'], friction_results['mu_rolling_avg'], friction_results['mu_energetic'],
+                            friction_results['F_normal'] * 1000, friction_results['F_resistance_avg'] * 1000,
+                            cleaning_info.get('original_length', 0), cleaning_info.get('cleaned_length', 0),
+                            cleaning_info.get('percentage_kept', 0), cleaning_info.get('start_removed', 0),
+                            cleaning_info.get('end_removed', 0)
+                        ],
+                        'Unite': [
+                            'sans_unite', 'mm/s', 'mm/s', 'mm', 's', 'mm/s',
+                            'mm/s2', 'mJ', 'pourcent', 'sans_unite', 'sans_unite', 'sans_unite',
+                            'mN', 'mN', 'points', 'points', 'pourcent', 'points', 'points'
+                        ]
+                    })
+                    
+                    csv_synthesis = synthesis_data.to_csv(index=False)
+                    st.download_button(
+                        label="📊 Résultats Synthèse (CSV)",
+                        data=csv_synthesis,
+                        file_name=f"resultats_synthese_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        help="Tous les résultats principaux en format tableau"
+                    )
+                
+                with export_col4:
+                    # Export rapport complet
+                    complete_report = f"""
+# 📊 RAPPORT COMPLET D'ANALYSE DE FRICTION
+Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+## 🧹 NETTOYAGE DES DONNÉES
+- Points originaux: {cleaning_info.get('original_length', 0)}
+- Points nettoyés: {cleaning_info.get('cleaned_length', 0)}
+- Pourcentage conservé: {cleaning_info.get('percentage_kept', 0):.1f}%
+- Points supprimés au début: {cleaning_info.get('start_removed', 0)}
+- Points supprimés à la fin: {cleaning_info.get('end_removed', 0)}
+
+## 🔬 PARAMÈTRES EXPÉRIMENTAUX
+- Masse sphère: {mass_g}g
+- Rayon sphère: {radius_mm}mm
+- FPS caméra: {fps_adv}
+- Angle inclinaison: {angle_deg_adv}°
+- Calibration: {pixels_per_mm_adv:.2f} px/mm
+
+## 📊 RÉSULTATS CINÉMATIQUES
+- Coefficient Krr: {metrics['krr']:.6f}
+- Vitesse initiale: {metrics['v0']*1000:.2f} mm/s
+- Vitesse finale: {metrics['vf']*1000:.2f} mm/s
+- Vitesse maximale: {metrics['max_velocity']*1000:.2f} mm/s
+- Distance totale: {metrics['distance']*1000:.2f} mm
+- Durée: {metrics['duration']:.3f} s
+- Accélération max: {metrics['max_acceleration']*1000:.2f} mm/s²
+
+## 🔥 RÉSULTATS FRICTION
+- μ cinétique moyen: {friction_results['mu_kinetic_avg']:.4f}
+- μ roulement moyen: {friction_results['mu_rolling_avg']:.4f}
+- μ énergétique: {friction_results['mu_energetic']:.4f}
+- Force normale: {friction_results['F_normal']*1000:.2f} mN
+- Force résistance moyenne: {friction_results['F_resistance_avg']*1000:.2f} mN
+
+## ⚡ BILAN ÉNERGÉTIQUE
+- Énergie initiale: {metrics['energy_initial']*1000:.2f} mJ
+- Énergie finale: {metrics['energy_final']*1000:.2f} mJ
+- Énergie dissipée: {metrics['energy_dissipated']*1000:.2f} mJ
+- Efficacité énergétique: {metrics['energy_efficiency']:.1f}%
+
+## ✅ VALIDATION
+- Krr cohérent avec littérature: {"OUI" if 0.03 <= metrics['krr'] <= 0.10 else "NON"}
+- Plage Van Wal (2017): 0.05-0.07
+- Status: {"✅ Valide" if 0.03 <= metrics['krr'] <= 0.10 else "⚠️ À vérifier"}
+
+## 🎯 RECOMMANDATIONS
+1. Nettoyage automatique appliqué avec succès
+2. {"Résultats cohérents avec la littérature" if 0.03 <= metrics['krr'] <= 0.10 else "Vérifier les paramètres expérimentaux"}
+3. {"Qualité des données excellente" if cleaning_info.get('percentage_kept', 0) > 80 else "Améliorer la qualité d'acquisition"}
+4. Friction grain-sphère caractérisée avec précision
+
+## 📁 FICHIERS GÉNÉRÉS
+- donnees_nettoyees_[timestamp].csv: Données brutes nettoyées
+- series_temporelles_[timestamp].csv: Toutes les courbes vs temps  
+- resultats_synthese_[timestamp].csv: Tableau des résultats principaux
+- rapport_complet_[timestamp].txt: Ce rapport détaillé
+
+Institution: Osaka University - Department of Cosmic Earth Science
+Logiciel: Plateforme d'Analyse de Résistance au Roulement + Friction
+Version: Code 3 - Analyse Complète avec Nettoyage Automatique
+"""
+                    
+                    st.download_button(
+                        label="📄 Rapport Complet (TXT)",
+                        data=complete_report,
+                        file_name=f"rapport_complet_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                        mime="text/plain",
+                        help="Rapport détaillé avec tous les résultats et métadonnées"
+                    )
+                
+                # Information sur les exports
+                st.info("""
+                💡 **Fichiers d'export disponibles :**
+                - **🧹 Données Nettoyées** : CSV avec Frame, X_center, Y_center, Radius (sans artefacts)
+                - **📈 Séries Temporelles** : Toutes les courbes calculées (vitesse, accélération, friction, etc.)
+                - **📊 Résultats Synthèse** : Tableau avec tous les résultats numériques principaux
+                - **📄 Rapport Complet** : Rapport détaillé avec paramètres, résultats et recommandations
+                """)
+                
+                st.success("✅ Analyse de friction terminée avec options d'export complètes!")
                 
             else:
                 st.error("❌ Impossible de calculer les métriques - données insuffisantes")
