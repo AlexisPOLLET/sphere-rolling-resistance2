@@ -681,11 +681,300 @@ if (st.session_state.current_df_valid is not None and
     # Placeholder for other analysis types
     elif analysis_type == "📈 Code 1 : Visualisation de Trajectoire":
         st.markdown("## 📈 Code 1 : Visualisation de Trajectoire")
-        st.info("Section en développement...")
+        st.markdown("*Système complet de détection avec analyse de trajectoire*")
+        
+        # Nettoyage automatique des données pour Code 1
+        df_clean, cleaning_info = clean_data_robust(df_valid)
+        
+        if "error" not in cleaning_info:
+            # Affichage du nettoyage
+            st.markdown("### 🧹 Nettoyage Automatique des Données")
+            
+            clean_col1, clean_col2, clean_col3 = st.columns(3)
+            
+            with clean_col1:
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{cleaning_info['start_removed']}</div>
+                    <div class="metric-label">Points Début Supprimés</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with clean_col2:
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{cleaning_info['end_removed']}</div>
+                    <div class="metric-label">Points Fin Supprimés</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with clean_col3:
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{cleaning_info['percentage_kept']:.1f}%</div>
+                    <div class="metric-label">Données Conservées</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Visualisation avec données nettoyées
+            st.markdown("### 🎯 Trajectoire de la Sphère (Données Nettoyées)")
+            
+            fig = make_subplots(
+                rows=2, cols=2,
+                subplot_titles=('🛤️ Trajectoire Nettoyée', '📍 Position X vs Temps', 
+                               '📍 Position Y vs Temps', '⚪ Évolution du Rayon'),
+                specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                       [{"secondary_y": False}, {"secondary_y": False}]]
+            )
+            
+            # Trajectory with cleaned data
+            fig.add_trace(
+                go.Scatter(x=df_clean['X_center'], y=df_clean['Y_center'],
+                          mode='markers+lines', 
+                          marker=dict(color=df_clean['Frame'], 
+                                    colorscale='viridis', 
+                                    size=6,
+                                    colorbar=dict(title="Frame")),
+                          line=dict(width=2),
+                          name='Trajectoire Nettoyée'),
+                row=1, col=1
+            )
+            
+            # X Position (cleaned)
+            fig.add_trace(
+                go.Scatter(x=df_clean['Frame'], y=df_clean['X_center'],
+                          mode='lines+markers', 
+                          line=dict(color='#3498db', width=2),
+                          marker=dict(size=4),
+                          name='Position X'),
+                row=1, col=2
+            )
+            
+            # Y Position (cleaned)
+            fig.add_trace(
+                go.Scatter(x=df_clean['Frame'], y=df_clean['Y_center'],
+                          mode='lines+markers',
+                          line=dict(color='#e74c3c', width=2),
+                          marker=dict(size=4),
+                          name='Position Y'),
+                row=2, col=1
+            )
+            
+            # Radius evolution (cleaned)
+            fig.add_trace(
+                go.Scatter(x=df_clean['Frame'], y=df_clean['Radius'],
+                          mode='lines+markers',
+                          line=dict(color='#2ecc71', width=2),
+                          marker=dict(size=4),
+                          name='Rayon'),
+                row=2, col=2
+            )
+            
+            fig.update_layout(height=600, showlegend=False,
+                             title_text="Analyse de Détection avec Données Nettoyées")
+            fig.update_yaxes(autorange="reversed", row=1, col=1)
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Statistiques avec données nettoyées
+            st.markdown("### 📊 Statistiques de Détection (Données Nettoyées)")
+            
+            stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+            
+            with stat_col1:
+                total_distance = np.sqrt(
+                    (df_clean['X_center'].iloc[-1] - df_clean['X_center'].iloc[0])**2 + 
+                    (df_clean['Y_center'].iloc[-1] - df_clean['Y_center'].iloc[0])**2
+                )
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{total_distance:.1f}</div>
+                    <div class="metric-label">Distance Totale (px)</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with stat_col2:
+                if len(df_clean) > 1:
+                    dx = df_clean['X_center'].diff()
+                    dy = df_clean['Y_center'].diff()
+                    speed = np.sqrt(dx**2 + dy**2)
+                    avg_speed = speed.mean()
+                    st.markdown(f"""
+                    <div class="metric-item">
+                        <div class="metric-value">{avg_speed:.2f}</div>
+                        <div class="metric-label">Vitesse Moyenne (px/frame)</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            with stat_col3:
+                vertical_displacement = abs(df_clean['Y_center'].iloc[-1] - df_clean['Y_center'].iloc[0])
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{vertical_displacement:.1f}</div>
+                    <div class="metric-label">Déplacement Vertical (px)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with stat_col4:
+                avg_radius = df_clean['Radius'].mean()
+                radius_std = df_clean['Radius'].std()
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{avg_radius:.1f} ± {radius_std:.1f}</div>
+                    <div class="metric-label">Rayon Moyen (px)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.success("✅ Code 1 avec nettoyage automatique terminé!")
+        else:
+            st.error("❌ Impossible de nettoyer les données pour le Code 1")
         
     elif analysis_type == "📊 Code 2 : Analyse Krr":
         st.markdown("## 📊 Code 2 : Analyse Krr") 
-        st.info("Section en développement...")
+        st.markdown("*Calculs physiques pour déterminer le coefficient Krr avec données nettoyées*")
+        
+        # Nettoyage automatique des données pour Code 2
+        df_clean, cleaning_info = clean_data_robust(df_valid)
+        
+        if "error" not in cleaning_info:
+            # Affichage du nettoyage
+            st.markdown("### 🧹 Nettoyage Automatique Appliqué")
+            
+            clean_col1, clean_col2, clean_col3 = st.columns(3)
+            
+            with clean_col1:
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{cleaning_info['percentage_kept']:.1f}%</div>
+                    <div class="metric-label">Données Conservées</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with clean_col2:
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{cleaning_info['cleaned_length']}</div>
+                    <div class="metric-label">Points Valides</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with clean_col3:
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{cleaning_info['start_removed'] + cleaning_info['end_removed']}</div>
+                    <div class="metric-label">Artefacts Supprimés</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Paramètres sphère
+            st.markdown("### 🔵 Paramètres de la Sphère")
+            param_col1, param_col2, param_col3 = st.columns(3)
+            
+            with param_col1:
+                sphere_radius_mm = st.number_input("Rayon (mm)", value=15.0, min_value=1.0)
+                sphere_mass_g = st.number_input("Masse (g)", value=10.0, min_value=0.1)
+                
+            with param_col2:
+                fps = st.number_input("FPS caméra", value=250.0, min_value=1.0)
+                angle_deg = st.number_input("Angle (°)", value=15.0, min_value=0.1)
+                
+            with param_col3:
+                # Calibration automatique
+                avg_radius_px = df_clean['Radius'].mean()
+                auto_cal = avg_radius_px / sphere_radius_mm
+                st.markdown(f"""
+                <div class="metric-item">
+                    <div class="metric-value">{auto_cal:.2f}</div>
+                    <div class="metric-label">Calibration Auto (px/mm)</div>
+                </div>
+                """, unsafe_allow_html=True)
+                pixels_per_mm = auto_cal
+            
+            # Calculs Krr avec données nettoyées
+            if st.button("🧮 Calculer Krr (Données Nettoyées)"):
+                # Utiliser directement calculate_advanced_metrics qui fait déjà le nettoyage
+                metrics = calculate_advanced_metrics(df_valid, fps, pixels_per_mm, sphere_mass_g, angle_deg)
+                
+                if metrics and metrics['krr'] is not None:
+                    st.markdown("### 📊 Résultats Krr (Sans Artefacts)")
+                    
+                    result_col1, result_col2, result_col3, result_col4 = st.columns(4)
+                    
+                    with result_col1:
+                        st.markdown(f"""
+                        <div class="metric-item">
+                            <div class="metric-value">{metrics['v0']*1000:.1f}</div>
+                            <div class="metric-label">V₀ (vitesse initiale)</div>
+                            <div class="metric-unit">mm/s</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with result_col2:
+                        st.markdown(f"""
+                        <div class="metric-item">
+                            <div class="metric-value">{metrics['vf']*1000:.1f}</div>
+                            <div class="metric-label">Vf (vitesse finale)</div>
+                            <div class="metric-unit">mm/s</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with result_col3:
+                        st.markdown(f"""
+                        <div class="metric-item">
+                            <div class="metric-value">{metrics['distance']*1000:.1f}</div>
+                            <div class="metric-label">Distance totale</div>
+                            <div class="metric-unit">mm</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with result_col4:
+                        st.markdown(f"""
+                        <div class="metric-item">
+                            <div class="metric-value">{metrics['krr']:.6f}</div>
+                            <div class="metric-label"><strong>Coefficient Krr</strong></div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Validation
+                        if 0.03 <= metrics['krr'] <= 0.10:
+                            st.markdown('<div class="status-success">✅ Cohérent avec Van Wal (2017)</div>', unsafe_allow_html=True)
+                        elif metrics['krr'] < 0:
+                            st.markdown('<div class="status-error">⚠️ Krr négatif - vérifier données</div>', unsafe_allow_html=True)
+                        else:
+                            st.markdown('<div class="status-warning">⚠️ Différent de la littérature</div>', unsafe_allow_html=True)
+                    
+                    # Graphique vitesse nettoyée
+                    st.markdown("### 🎯 Profil de Vitesse (Données Nettoyées)")
+                    
+                    fig_krr = go.Figure()
+                    fig_krr.add_trace(go.Scatter(
+                        x=metrics['time'], 
+                        y=metrics['velocity']*1000, 
+                        mode='lines+markers',
+                        line=dict(color='blue', width=3),
+                        name='Vitesse Nettoyée'
+                    ))
+                    
+                    # Lignes de référence
+                    fig_krr.add_hline(y=metrics['v0']*1000, line_dash="dash", line_color="green", 
+                                     annotation_text=f"V₀ = {metrics['v0']*1000:.1f} mm/s")
+                    fig_krr.add_hline(y=metrics['vf']*1000, line_dash="dash", line_color="red",
+                                     annotation_text=f"Vf = {metrics['vf']*1000:.1f} mm/s")
+                    
+                    fig_krr.update_layout(
+                        title="Vitesse vs Temps (Sans Artefacts)",
+                        xaxis_title="Temps (s)",
+                        yaxis_title="Vitesse (mm/s)",
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig_krr, use_container_width=True)
+                    
+                    st.success("✅ Code 2 avec nettoyage automatique terminé!")
+                else:
+                    st.error("❌ Impossible de calculer Krr")
+        else:
+            st.error("❌ Impossible de nettoyer les données pour le Code 2")
         
     elif analysis_type == "🔍 Comparaison Multi-Expériences":
         st.markdown("## 🔍 Comparaison Multi-Expériences")
