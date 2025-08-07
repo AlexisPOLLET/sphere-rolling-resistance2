@@ -1840,7 +1840,7 @@ Plateforme: Osaka University - Granular Mechanics Lab
         
 
     # ===== COMPARAISON MULTI-EXPÉRIENCES =====
-    elif analysis_type == "🔍 Comparaison Multi-Expériences":
+        elif analysis_type == "🔍 Comparaison Multi-Expériences":
         st.markdown("# 🔍 Comparaison Multi-Expériences")
         
         if not st.session_state.experiments:
