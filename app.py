@@ -120,32 +120,99 @@ def create_sample_data_with_metadata(experiment_name="Sample", water_content=0.0
     
     return df, metadata
 
+def clean_data_robust(df_valid, fps=250, pixels_per_mm=5.0):
+    """Nettoie robustement les données en éliminant les artefacts de début/fin"""
+    if len(df_valid) < 20:
+        return df_valid, {"error": "Pas assez de données"}
+    
+    # Conversion en unités physiques
+    dt = 1 / fps
+    x_m = df_valid['X_center'].values / pixels_per_mm / 1000
+    y_m = df_valid['Y_center'].values / pixels_per_mm / 1000
+    
+    # Calcul des vitesses
+    vx = np.gradient(x_m, dt)
+    vy = np.gradient(y_m, dt)
+    v_magnitude = np.sqrt(vx**2 + vy**2)
+    
+    # Calcul des accélérations
+    acceleration = np.abs(np.gradient(v_magnitude, dt))
+    
+    # Méthode 1: Éliminer les N premiers et derniers points (brutal mais efficace)
+    n_remove = max(5, len(df_valid) // 10)  # Enlever au moins 5 points ou 10% des données
+    
+    # Méthode 2: Détecter les zones de vitesse stable
+    v_smooth = np.convolve(v_magnitude, np.ones(5)/5, mode='same')  # Lissage
+    v_median = np.median(v_smooth)
+    v_threshold = v_median * 0.3  # Seuil à 30% de la vitesse médiane
+    
+    # Trouver la zone stable
+    stable_mask = v_smooth > v_threshold
+    
+    # Trouver les indices de début et fin de zone stable
+    stable_indices = np.where(stable_mask)[0]
+    
+    if len(stable_indices) > 10:
+        start_idx = stable_indices[0] + 3  # Ajouter une marge
+        end_idx = stable_indices[-1] - 3   # Ajouter une marge
+    else:
+        # Fallback: utiliser la méthode brutale
+        start_idx = n_remove
+        end_idx = len(df_valid) - n_remove
+    
+    # S'assurer qu'on a encore assez de données
+    if end_idx - start_idx < 10:
+        # Utiliser une approche plus conservatrice
+        start_idx = len(df_valid) // 5
+        end_idx = len(df_valid) - len(df_valid) // 5
+    
+    # Découper les données
+    df_cleaned = df_valid.iloc[start_idx:end_idx].copy().reset_index(drop=True)
+    
+    cleaning_info = {
+        "original_length": len(df_valid),
+        "cleaned_length": len(df_cleaned),
+        "start_removed": start_idx,
+        "end_removed": len(df_valid) - end_idx,
+        "percentage_kept": len(df_cleaned) / len(df_valid) * 100
+    }
+    
+    return df_cleaned, cleaning_info
+
 def calculate_advanced_metrics(df_valid, fps=250, pixels_per_mm=5.0, sphere_mass_g=10.0, angle_deg=15.0):
     """Calculate comprehensive kinematic and dynamic metrics"""
     if len(df_valid) < 10:
         return None
     
-    # Convert to real units
+    # NETTOYAGE ROBUSTE DES DONNÉES
+    df_clean, cleaning_info = clean_data_robust(df_valid, fps, pixels_per_mm)
+    
+    if "error" in cleaning_info:
+        return None
+    
+    # Convert to real units avec données nettoyées
     dt = 1 / fps
     mass_kg = sphere_mass_g / 1000
     angle_rad = np.radians(angle_deg)
     g = 9.81
     
-    x_m = df_valid['X_center'].values / pixels_per_mm / 1000
-    y_m = df_valid['Y_center'].values / pixels_per_mm / 1000
+    x_m = df_clean['X_center'].values / pixels_per_mm / 1000
+    y_m = df_clean['Y_center'].values / pixels_per_mm / 1000
     
     # Time array
-    t = np.arange(len(df_valid)) * dt
+    t = np.arange(len(df_clean)) * dt
     
-    # Calculate velocities and accelerations
+    # Calculate velocities and accelerations avec données nettoyées
     vx = np.gradient(x_m, dt)
     vy = np.gradient(y_m, dt)
     v_magnitude = np.sqrt(vx**2 + vy**2)
     
-    # Accelerations
-    acceleration = np.gradient(v_magnitude, dt)
+    # Accelerations avec lissage pour éviter le bruit
+    acceleration_raw = np.gradient(v_magnitude, dt)
+    # Lissage de l'accélération pour éliminer les pics
+    acceleration = np.convolve(acceleration_raw, np.ones(3)/3, mode='same')
     
-    # Forces
+    # Forces avec accélération lissée
     F_resistance = mass_kg * np.abs(acceleration)
     
     # Energies
@@ -157,7 +224,7 @@ def calculate_advanced_metrics(df_valid, fps=250, pixels_per_mm=5.0, sphere_mass
     # Power
     P_resistance = F_resistance * v_magnitude
     
-    # Basic Krr calculation
+    # Basic Krr calculation avec données nettoyées
     n_avg = min(3, len(v_magnitude)//4)
     v0 = np.mean(v_magnitude[:n_avg]) if len(v_magnitude) >= n_avg else v_magnitude[0]
     vf = np.mean(v_magnitude[-n_avg:]) if len(v_magnitude) >= n_avg else v_magnitude[-1]
@@ -187,12 +254,19 @@ def calculate_advanced_metrics(df_valid, fps=250, pixels_per_mm=5.0, sphere_mass
         'power': P_resistance,
         'energy_kinetic': E_kinetic,
         'vx': vx,
-        'vy': vy
+        'vy': vy,
+        'cleaning_info': cleaning_info  # Ajouter les infos de nettoyage
     }
 
 def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0, fps=250.0, pixels_per_mm=5.0):
     """Calculate friction coefficients from trajectory data"""
     if len(df_valid) < 10:
+        return None
+    
+    # NETTOYAGE ROBUSTE DES DONNÉES POUR FRICTION AUSSI
+    df_clean, cleaning_info = clean_data_robust(df_valid, fps, pixels_per_mm)
+    
+    if "error" in cleaning_info:
         return None
     
     # Physical parameters
@@ -201,25 +275,27 @@ def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0
     g = 9.81
     dt = 1 / fps
     
-    # Convert positions to meters
-    x_m = df_valid['X_center'].values / pixels_per_mm / 1000
-    y_m = df_valid['Y_center'].values / pixels_per_mm / 1000
+    # Convert positions to meters avec données nettoyées
+    x_m = df_clean['X_center'].values / pixels_per_mm / 1000
+    y_m = df_clean['Y_center'].values / pixels_per_mm / 1000
     
-    # Calculate velocities and accelerations
+    # Calculate velocities and accelerations avec données nettoyées
     vx = np.gradient(x_m, dt)
     vy = np.gradient(y_m, dt)
     v_magnitude = np.sqrt(vx**2 + vy**2)
     
-    # Acceleration
-    acceleration = np.gradient(v_magnitude, dt)
+    # Acceleration avec lissage
+    acceleration_raw = np.gradient(v_magnitude, dt)
+    acceleration = np.convolve(acceleration_raw, np.ones(3)/3, mode='same')
     
     # Forces
     F_gravity_component = mass_kg * g * np.sin(angle_rad)
     F_normal = mass_kg * g * np.cos(angle_rad)
     F_resistance = mass_kg * np.abs(acceleration)
     
-    # Friction coefficients
-    mu_kinetic = F_resistance / F_normal
+    # Friction coefficients avec lissage
+    mu_kinetic_raw = F_resistance / F_normal
+    mu_kinetic = np.convolve(mu_kinetic_raw, np.ones(5)/5, mode='same')  # Lissage supplémentaire
     mu_rolling = mu_kinetic - np.tan(angle_rad)
     
     # Basic calculations
@@ -255,12 +331,13 @@ def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0
         'F_gravity_component': F_gravity_component,
         'E_dissipated': E_dissipated,
         'energy_efficiency': (E_kinetic_final / E_kinetic_initial * 100) if E_kinetic_initial > 0 else 0,
-        'time': np.arange(len(df_valid)) * dt,
+        'time': np.arange(len(df_clean)) * dt,
         'mu_kinetic_series': mu_kinetic,
         'mu_rolling_series': mu_rolling,
         'velocity': v_magnitude,
         'acceleration': acceleration,
-        'F_resistance_series': F_resistance
+        'F_resistance_series': F_resistance,
+        'cleaning_info': cleaning_info  # Ajouter les infos de nettoyage
     }
 
 # ==================== MAIN APPLICATION ====================
@@ -435,6 +512,40 @@ if (st.session_state.current_df_valid is not None and
                 )
             
             if metrics and friction_results:
+                # === AFFICHAGE DES INFORMATIONS DE NETTOYAGE ===
+                st.markdown("### 🧹 Nettoyage des Données")
+                
+                cleaning_info = metrics.get('cleaning_info', {})
+                clean_col1, clean_col2, clean_col3 = st.columns(3)
+                
+                with clean_col1:
+                    st.markdown(f"""
+                    <div class="metric-item">
+                        <div class="metric-value">{cleaning_info.get('original_length', 0)}</div>
+                        <div class="metric-label">Points Originaux</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                with clean_col2:
+                    st.markdown(f"""
+                    <div class="metric-item">
+                        <div class="metric-value">{cleaning_info.get('cleaned_length', 0)}</div>
+                        <div class="metric-label">Points Nettoyés</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                with clean_col3:
+                    percentage_kept = cleaning_info.get('percentage_kept', 0)
+                    st.markdown(f"""
+                    <div class="metric-item">
+                        <div class="metric-value">{percentage_kept:.1f}%</div>
+                        <div class="metric-label">Données Conservées</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                if cleaning_info.get('start_removed', 0) > 0 or cleaning_info.get('end_removed', 0) > 0:
+                    st.success(f"✅ Artefacts supprimés : {cleaning_info.get('start_removed', 0)} points au début, {cleaning_info.get('end_removed', 0)} points à la fin")
+                
                 # === FRICTION ANALYSIS SECTION ===
                 st.markdown("### 🔥 Analyse de Friction Grain-Sphère")
                 
