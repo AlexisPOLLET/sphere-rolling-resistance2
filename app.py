@@ -1948,7 +1948,7 @@ elif analysis_type == "🔍 Comparaison Multi-Expériences":
                 st.info("Veuillez sélectionner au moins 2 expériences pour la comparaison")
 
     # ===== ANALYSE DE REPRODUCTIBILITÉ =====
-    elif analysis_type == "🔄 Analyse de Reproductibilité":
+elif analysis_type == "🔄 Analyse de Reproductibilité":
         st.markdown("# 🔄 Analyse de Reproductibilité")
         
         if not st.session_state.experiments:
@@ -2061,7 +2061,7 @@ elif analysis_type == "🔍 Comparaison Multi-Expériences":
                 st.info("Aucun groupe reproductible détecté. Ajoutez plusieurs expériences avec des conditions similaires.")
 
     # ===== MODULE DE PRÉDICTION =====
-    elif analysis_type == "🎯 Module de Prédiction":
+elif analysis_type == "🎯 Module de Prédiction":
         st.markdown("# 🎯 Module de Prédiction")
         
         if not st.session_state.experiments:
@@ -2145,7 +2145,7 @@ elif analysis_type == "🔍 Comparaison Multi-Expériences":
                 st.error("❌ Données insuffisantes pour construire un modèle prédictif. Besoin d'au moins 3 expériences.")
 
     # ===== AUTO-GENERATED REPORT =====
-    elif analysis_type == "📄 Rapport Auto-Généré":
+elif analysis_type == "📄 Rapport Auto-Généré":
         st.markdown("# 📄 Rapport d'Analyse Auto-Généré")
         
         if not st.session_state.experiments:
