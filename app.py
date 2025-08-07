@@ -480,8 +480,8 @@ if (st.session_state.current_df_valid is not None and
         
         with param_col1:
             st.markdown("**Paramètres Sphère**")
-            mass_g = st.number_input("Masse (g)", value=10.0, min_value=0.1)
-            radius_mm = st.number_input("Rayon (mm)", value=15.0, min_value=1.0)
+            mass_g = st.number_input("Masse (g)", value=1.0, min_value=0.1)
+            radius_mm = st.number_input("Rayon (mm)", value=7.5, min_value=1.0)
             
         with param_col2:
             st.markdown("**Paramètres Expérimentaux**")
