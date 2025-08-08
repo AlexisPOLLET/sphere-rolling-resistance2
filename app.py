@@ -650,7 +650,6 @@ if (st.session_state.current_df_valid is not None and
                 
                 summary_col1, summary_col2, summary_col3 = st.columns(3)
                 
-                with summary_
                                 # === EXPORT CLEANED DATA ===
                 st.markdown("### 💾 Export Data and Results")
                 
