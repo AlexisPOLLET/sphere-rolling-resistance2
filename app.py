@@ -121,52 +121,52 @@ def create_sample_data_with_metadata(experiment_name="Sample", water_content=0.0
     return df, metadata
 
 def clean_data_robust(df_valid, fps=250, pixels_per_mm=5.0):
-    """Nettoie robustement les données en éliminant les artefacts de début/fin"""
+    """Robustly cleans data by eliminating start/end artifacts"""
     if len(df_valid) < 20:
-        return df_valid, {"error": "Pas assez de données"}
+        return df_valid, {"error": "Not enough data"}
     
-    # Conversion en unités physiques
+    # Convert to physical units
     dt = 1 / fps
     x_m = df_valid['X_center'].values / pixels_per_mm / 1000
     y_m = df_valid['Y_center'].values / pixels_per_mm / 1000
     
-    # Calcul des vitesses
+    # Calculate velocities
     vx = np.gradient(x_m, dt)
     vy = np.gradient(y_m, dt)
     v_magnitude = np.sqrt(vx**2 + vy**2)
     
-    # Calcul des accélérations
+    # Calculate accelerations
     acceleration = np.abs(np.gradient(v_magnitude, dt))
     
-    # Méthode 1: Éliminer les N premiers et derniers points (brutal mais efficace)
-    n_remove = max(5, len(df_valid) // 10)  # Enlever au moins 5 points ou 10% des données
+    # Method 1: Remove first and last N points (brute but effective)
+    n_remove = max(5, len(df_valid) // 10)  # Remove at least 5 points or 10% of data
     
-    # Méthode 2: Détecter les zones de vitesse stable
-    v_smooth = np.convolve(v_magnitude, np.ones(5)/5, mode='same')  # Lissage
+    # Method 2: Detect stable velocity zones
+    v_smooth = np.convolve(v_magnitude, np.ones(5)/5, mode='same')  # Smoothing
     v_median = np.median(v_smooth)
-    v_threshold = v_median * 0.3  # Seuil à 30% de la vitesse médiane
+    v_threshold = v_median * 0.3  # Threshold at 30% of median velocity
     
-    # Trouver la zone stable
+    # Find stable zone
     stable_mask = v_smooth > v_threshold
     
-    # Trouver les indices de début et fin de zone stable
+    # Find stable zone start and end indices
     stable_indices = np.where(stable_mask)[0]
     
     if len(stable_indices) > 10:
-        start_idx = stable_indices[0] + 3  # Ajouter une marge
-        end_idx = stable_indices[-1] - 3   # Ajouter une marge
+        start_idx = stable_indices[0] + 3  # Add margin
+        end_idx = stable_indices[-1] - 3   # Add margin
     else:
-        # Fallback: utiliser la méthode brutale
+        # Fallback: use brute method
         start_idx = n_remove
         end_idx = len(df_valid) - n_remove
     
-    # S'assurer qu'on a encore assez de données
+    # Ensure we still have enough data
     if end_idx - start_idx < 10:
-        # Utiliser une approche plus conservatrice
+        # Use more conservative approach
         start_idx = len(df_valid) // 5
         end_idx = len(df_valid) - len(df_valid) // 5
     
-    # Découper les données
+    # Trim data
     df_cleaned = df_valid.iloc[start_idx:end_idx].copy().reset_index(drop=True)
     
     cleaning_info = {
@@ -184,13 +184,13 @@ def calculate_advanced_metrics(df_valid, fps=250, pixels_per_mm=5.0, sphere_mass
     if len(df_valid) < 10:
         return None
     
-    # NETTOYAGE ROBUSTE DES DONNÉES
+    # ROBUST DATA CLEANING
     df_clean, cleaning_info = clean_data_robust(df_valid, fps, pixels_per_mm)
     
     if "error" in cleaning_info:
         return None
     
-    # Convert to real units avec données nettoyées
+    # Convert to real units with cleaned data
     dt = 1 / fps
     mass_kg = sphere_mass_g / 1000
     angle_rad = np.radians(angle_deg)
@@ -202,17 +202,17 @@ def calculate_advanced_metrics(df_valid, fps=250, pixels_per_mm=5.0, sphere_mass
     # Time array
     t = np.arange(len(df_clean)) * dt
     
-    # Calculate velocities and accelerations avec données nettoyées
+    # Calculate velocities and accelerations with cleaned data
     vx = np.gradient(x_m, dt)
     vy = np.gradient(y_m, dt)
     v_magnitude = np.sqrt(vx**2 + vy**2)
     
-    # Accelerations avec lissage pour éviter le bruit
+    # Accelerations with smoothing to avoid noise
     acceleration_raw = np.gradient(v_magnitude, dt)
-    # Lissage de l'accélération pour éliminer les pics
+    # Smooth acceleration to eliminate spikes
     acceleration = np.convolve(acceleration_raw, np.ones(3)/3, mode='same')
     
-    # Forces avec accélération lissée
+    # Forces with smoothed acceleration
     F_resistance = mass_kg * np.abs(acceleration)
     
     # Energies
@@ -224,7 +224,7 @@ def calculate_advanced_metrics(df_valid, fps=250, pixels_per_mm=5.0, sphere_mass
     # Power
     P_resistance = F_resistance * v_magnitude
     
-    # Basic Krr calculation avec données nettoyées
+    # Basic Krr calculation with cleaned data
     n_avg = min(3, len(v_magnitude)//4)
     v0 = np.mean(v_magnitude[:n_avg]) if len(v_magnitude) >= n_avg else v_magnitude[0]
     vf = np.mean(v_magnitude[-n_avg:]) if len(v_magnitude) >= n_avg else v_magnitude[-1]
@@ -255,7 +255,7 @@ def calculate_advanced_metrics(df_valid, fps=250, pixels_per_mm=5.0, sphere_mass
         'energy_kinetic': E_kinetic,
         'vx': vx,
         'vy': vy,
-        'cleaning_info': cleaning_info  # Ajouter les infos de nettoyage
+        'cleaning_info': cleaning_info  # Add cleaning info
     }
 
 def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0, fps=250.0, pixels_per_mm=5.0):
@@ -263,7 +263,7 @@ def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0
     if len(df_valid) < 10:
         return None
     
-    # NETTOYAGE ROBUSTE DES DONNÉES POUR FRICTION AUSSI
+    # ROBUST DATA CLEANING FOR FRICTION ALSO
     df_clean, cleaning_info = clean_data_robust(df_valid, fps, pixels_per_mm)
     
     if "error" in cleaning_info:
@@ -275,16 +275,16 @@ def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0
     g = 9.81
     dt = 1 / fps
     
-    # Convert positions to meters avec données nettoyées
+    # Convert positions to meters with cleaned data
     x_m = df_clean['X_center'].values / pixels_per_mm / 1000
     y_m = df_clean['Y_center'].values / pixels_per_mm / 1000
     
-    # Calculate velocities and accelerations avec données nettoyées
+    # Calculate velocities and accelerations with cleaned data
     vx = np.gradient(x_m, dt)
     vy = np.gradient(y_m, dt)
     v_magnitude = np.sqrt(vx**2 + vy**2)
     
-    # Acceleration avec lissage
+    # Acceleration with smoothing
     acceleration_raw = np.gradient(v_magnitude, dt)
     acceleration = np.convolve(acceleration_raw, np.ones(3)/3, mode='same')
     
@@ -293,9 +293,9 @@ def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0
     F_normal = mass_kg * g * np.cos(angle_rad)
     F_resistance = mass_kg * np.abs(acceleration)
     
-    # Friction coefficients avec lissage
+    # Friction coefficients with smoothing
     mu_kinetic_raw = F_resistance / F_normal
-    mu_kinetic = np.convolve(mu_kinetic_raw, np.ones(5)/5, mode='same')  # Lissage supplémentaire
+    mu_kinetic = np.convolve(mu_kinetic_raw, np.ones(5)/5, mode='same')  # Additional smoothing
     mu_rolling = mu_kinetic - np.tan(angle_rad)
     
     # Basic calculations
@@ -337,7 +337,7 @@ def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0
         'velocity': v_magnitude,
         'acceleration': acceleration,
         'F_resistance_series': F_resistance,
-        'cleaning_info': cleaning_info  # Ajouter les infos de nettoyage
+        'cleaning_info': cleaning_info  # Add cleaning info
     }
 
 # ==================== MAIN APPLICATION ====================
@@ -345,9 +345,9 @@ def calculate_friction_coefficients(df_valid, sphere_mass_g=10.0, angle_deg=15.0
 # Header
 st.markdown("""
 <div class="main-header">
-    <h1>📊 Plateforme d'Analyse de Résistance au Roulement des Sphères</h1>
-    <p>Suite d'analyse complète pour la recherche en mécanique granulaire - Université d'Osaka</p>
-    <p><strong>🔥 NOUVEAU:</strong> Analyse de friction grain-sphère intégrée!</p>
+    <h1>📊 Sphere Rolling Resistance Analysis Platform</h1>
+    <p>Complete analysis suite for granular mechanics research - Osaka University</p>
+    <p><strong>🔥 NEW:</strong> Integrated grain-sphere friction analysis!</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -356,35 +356,35 @@ st.sidebar.markdown("### 📋 Navigation")
 
 # Analysis type selection
 analysis_type = st.sidebar.selectbox(
-    "Sélectionnez le type d'analyse :",
+    "Select analysis type:",
     [
-        "📈 Code 1 : Visualisation de Trajectoire",
-        "📊 Code 2 : Analyse Krr", 
-        "🔬 Code 3 : Analyse Complète + Friction",
-        "🔍 Comparaison Multi-Expériences"
+        "📈 Code 1: Trajectory Visualization",
+        "📊 Code 2: Krr Analysis", 
+        "🔬 Code 3: Complete Analysis + Friction",
+        "🔍 Multi-Experiment Comparison"
     ]
 )
 
 # ==================== DATA LOADING SECTION ====================
 
-st.markdown("## 📂 Chargement des Données")
+st.markdown("## 📂 Data Loading")
 
 # Create tabs for data input
-tab1, tab2 = st.tabs(["📁 Upload Fichier", "🔬 Données d'Exemple"])
+tab1, tab2 = st.tabs(["📁 Upload File", "🔬 Sample Data"])
 
 with tab1:
     col1, col2, col3 = st.columns(3)
     with col1:
-        experiment_name = st.text_input("Nom de l'Expérience", value="Experiment_1")
+        experiment_name = st.text_input("Experiment Name", value="Experiment_1")
     with col2:
-        water_content = st.number_input("Teneur en Eau (%)", value=0.0, min_value=0.0, max_value=30.0)
+        water_content = st.number_input("Water Content (%)", value=0.0, min_value=0.0, max_value=30.0)
     with col3:
-        sphere_type = st.selectbox("Type de Sphère", ["Steel", "Plastic", "Glass", "Other"])
+        sphere_type = st.selectbox("Sphere Type", ["Steel", "Plastic", "Glass", "Other"])
     
     uploaded_file = st.file_uploader(
-        "Choisissez votre fichier CSV", 
+        "Choose your CSV file", 
         type=['csv'],
-        help="CSV avec colonnes: Frame, X_center, Y_center, Radius"
+        help="CSV with columns: Frame, X_center, Y_center, Radius"
     )
     
     if uploaded_file is not None:
@@ -398,19 +398,19 @@ with tab1:
                 st.session_state.current_df_valid = df_valid
                 
                 success_rate = len(df_valid) / len(df) * 100 if len(df) > 0 else 0
-                st.success(f"✅ Fichier chargé: {len(df)} frames, {len(df_valid)} détections valides ({success_rate:.1f}%)")
+                st.success(f"✅ File loaded: {len(df)} frames, {len(df_valid)} valid detections ({success_rate:.1f}%)")
                 
         except Exception as e:
-            st.error(f"❌ Erreur: {str(e)}")
+            st.error(f"❌ Error: {str(e)}")
 
 with tab2:
     col1, col2 = st.columns(2)
     with col1:
-        sample_water = st.slider("Teneur en Eau d'Exemple (%)", 0.0, 25.0, 10.0, 0.5)
+        sample_water = st.slider("Sample Water Content (%)", 0.0, 25.0, 10.0, 0.5)
     with col2:
-        sample_sphere = st.selectbox("Type de Sphère d'Exemple", ["Steel", "Plastic", "Glass"], key="sample_sphere")
+        sample_sphere = st.selectbox("Sample Sphere Type", ["Steel", "Plastic", "Glass"], key="sample_sphere")
     
-    if st.button("🔬 Générer des données d'exemple"):
+    if st.button("🔬 Generate sample data"):
         df, metadata = create_sample_data_with_metadata(
             experiment_name=f"Sample_{sample_water}%", 
             water_content=sample_water, 
@@ -420,7 +420,7 @@ with tab2:
         
         st.session_state.current_df = df
         st.session_state.current_df_valid = df_valid
-        st.success("📊 Données d'exemple générées!")
+        st.success("📊 Sample data generated!")
 
 # ==================== ANALYSIS SECTIONS ====================
 
@@ -430,7 +430,7 @@ if (st.session_state.current_df_valid is not None and
     df_valid = st.session_state.current_df_valid
     
     # Quick overview
-    st.markdown("## 📊 Aperçu des Données")
+    st.markdown("## 📊 Data Overview")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -438,7 +438,7 @@ if (st.session_state.current_df_valid is not None and
         st.markdown(f"""
         <div class="metric-item">
             <div class="metric-value">{len(st.session_state.current_df)}</div>
-            <div class="metric-label">Frames Totales</div>
+            <div class="metric-label">Total Frames</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -446,7 +446,7 @@ if (st.session_state.current_df_valid is not None and
         st.markdown(f"""
         <div class="metric-item">
             <div class="metric-value">{len(df_valid)}</div>
-            <div class="metric-label">Détections Valides</div>
+            <div class="metric-label">Valid Detections</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -455,7 +455,7 @@ if (st.session_state.current_df_valid is not None and
         st.markdown(f"""
         <div class="metric-item">
             <div class="metric-value">{success_rate:.1f}%</div>
-            <div class="metric-label">Taux de Succès</div>
+            <div class="metric-label">Success Rate</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -464,27 +464,27 @@ if (st.session_state.current_df_valid is not None and
         st.markdown(f"""
         <div class="metric-item">
             <div class="metric-value">{avg_radius:.1f}</div>
-            <div class="metric-label">Rayon Moyen (px)</div>
+            <div class="metric-label">Average Radius (px)</div>
         </div>
         """, unsafe_allow_html=True)
     
     # ===== CODE 3: ADVANCED COMPLETE ANALYSIS + FRICTION =====
-    if analysis_type == "🔬 Code 3 : Analyse Complète + Friction":
-        st.markdown("## 🔬 Code 3 : Analyse Cinématique Avancée + Analyse de Friction")
-        st.markdown("**🔥 NOUVEAU :** Analyse de friction grain-sphère intégrée!")
+    if analysis_type == "🔬 Code 3: Complete Analysis + Friction":
+        st.markdown("## 🔬 Code 3: Advanced Kinematic Analysis + Friction Analysis")
+        st.markdown("**🔥 NEW:** Integrated grain-sphere friction analysis!")
         
         # Parameters
-        st.markdown("### ⚙️ Paramètres d'Analyse")
+        st.markdown("### ⚙️ Analysis Parameters")
         
         param_col1, param_col2, param_col3 = st.columns(3)
         
         with param_col1:
-            st.markdown("**Paramètres Sphère**")
-            mass_g = st.number_input("Masse (g)", value=1.0, min_value=0.1)
-            radius_mm = st.number_input("Rayon (mm)", value=7.5, min_value=1.0)
+            st.markdown("**Sphere Parameters**")
+            mass_g = st.number_input("Mass (g)", value=1.0, min_value=0.1)
+            radius_mm = st.number_input("Radius (mm)", value=7.5, min_value=1.0)
             
         with param_col2:
-            st.markdown("**Paramètres Expérimentaux**")
+            st.markdown("**Experimental Parameters**")
             fps_adv = st.number_input("FPS", value=250.0, min_value=1.0)
             angle_deg_adv = st.number_input("Angle (°)", value=15.0, min_value=0.1)
             
@@ -496,15 +496,15 @@ if (st.session_state.current_df_valid is not None and
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{auto_cal:.2f}</div>
-                    <div class="metric-label">Calibration auto (px/mm)</div>
+                    <div class="metric-label">Auto calibration (px/mm)</div>
                 </div>
                 """, unsafe_allow_html=True)
                 pixels_per_mm_adv = auto_cal
         
         # Launch analysis
-        if st.button("🚀 Lancer l'Analyse Complète + Friction"):
+        if st.button("🚀 Launch Complete Analysis + Friction"):
             
-            with st.spinner("🧮 Calcul des métriques avancées et analyse de friction..."):
+            with st.spinner("🧮 Calculating advanced metrics and friction analysis..."):
                 # Calculate metrics
                 metrics = calculate_advanced_metrics(df_valid, fps_adv, pixels_per_mm_adv, mass_g, angle_deg_adv)
                 friction_results = calculate_friction_coefficients(
@@ -512,8 +512,8 @@ if (st.session_state.current_df_valid is not None and
                 )
             
             if metrics and friction_results:
-                # === AFFICHAGE DES INFORMATIONS DE NETTOYAGE ===
-                st.markdown("### 🧹 Nettoyage des Données")
+                # === DATA CLEANING INFORMATION DISPLAY ===
+                st.markdown("### 🧹 Data Cleaning")
                 
                 cleaning_info = metrics.get('cleaning_info', {})
                 clean_col1, clean_col2, clean_col3 = st.columns(3)
@@ -522,7 +522,7 @@ if (st.session_state.current_df_valid is not None and
                     st.markdown(f"""
                     <div class="metric-item">
                         <div class="metric-value">{cleaning_info.get('original_length', 0)}</div>
-                        <div class="metric-label">Points Originaux</div>
+                        <div class="metric-label">Original Points</div>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -530,7 +530,7 @@ if (st.session_state.current_df_valid is not None and
                     st.markdown(f"""
                     <div class="metric-item">
                         <div class="metric-value">{cleaning_info.get('cleaned_length', 0)}</div>
-                        <div class="metric-label">Points Nettoyés</div>
+                        <div class="metric-label">Cleaned Points</div>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -539,15 +539,15 @@ if (st.session_state.current_df_valid is not None and
                     st.markdown(f"""
                     <div class="metric-item">
                         <div class="metric-value">{percentage_kept:.1f}%</div>
-                        <div class="metric-label">Données Conservées</div>
+                        <div class="metric-label">Data Retained</div>
                     </div>
                     """, unsafe_allow_html=True)
                 
                 if cleaning_info.get('start_removed', 0) > 0 or cleaning_info.get('end_removed', 0) > 0:
-                    st.success(f"✅ Artefacts supprimés : {cleaning_info.get('start_removed', 0)} points au début, {cleaning_info.get('end_removed', 0)} points à la fin")
+                    st.success(f"✅ Artifacts removed: {cleaning_info.get('start_removed', 0)} points at start, {cleaning_info.get('end_removed', 0)} points at end")
                 
                 # === FRICTION ANALYSIS SECTION ===
-                st.markdown("### 🔥 Analyse de Friction Grain-Sphère")
+                st.markdown("### 🔥 Grain-Sphere Friction Analysis")
                 
                 # Display friction results
                 friction_col1, friction_col2, friction_col3, friction_col4 = st.columns(4)
@@ -555,18 +555,18 @@ if (st.session_state.current_df_valid is not None and
                 with friction_col1:
                     st.markdown(f"""
                     <div class="friction-card">
-                        <h4>🔥 μ Cinétique</h4>
+                        <h4>🔥 μ Kinetic</h4>
                         <h2>{friction_results['mu_kinetic_avg']:.4f}</h2>
-                        <p>Friction grain-sphère directe</p>
+                        <p>Direct grain-sphere friction</p>
                     </div>
                     """, unsafe_allow_html=True)
                     
                 with friction_col2:
                     st.markdown(f"""
                     <div class="friction-card">
-                        <h4>🎯 μ Roulement</h4>
+                        <h4>🎯 μ Rolling</h4>
                         <h2>{friction_results['mu_rolling_avg']:.4f}</h2>
-                        <p>Résistance pure au roulement</p>
+                        <p>Pure rolling resistance</p>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -574,9 +574,9 @@ if (st.session_state.current_df_valid is not None and
                     mu_energetic_val = friction_results['mu_energetic'] if friction_results['mu_energetic'] else 0
                     st.markdown(f"""
                     <div class="friction-card">
-                        <h4>⚡ μ Énergétique</h4>
+                        <h4>⚡ μ Energetic</h4>
                         <h2>{mu_energetic_val:.4f}</h2>
-                        <p>Basé sur dissipation d'énergie</p>
+                        <p>Based on energy dissipation</p>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -584,46 +584,46 @@ if (st.session_state.current_df_valid is not None and
                     krr_val = friction_results['krr'] if friction_results['krr'] else 0
                     st.markdown(f"""
                     <div class="friction-card">
-                        <h4>📊 Krr Référence</h4>
+                        <h4>📊 Krr Reference</h4>
                         <h2>{krr_val:.6f}</h2>
-                        <p>Coefficient traditionnel</p>
+                        <p>Traditional coefficient</p>
                     </div>
                     """, unsafe_allow_html=True)
                 
                 # Advanced visualizations
-                st.markdown("### 📈 Visualisations Avancées + Analyse de Friction")
+                st.markdown("### 📈 Advanced Visualizations + Friction Analysis")
                 
                 fig_advanced = make_subplots(
                     rows=2, cols=2,
-                    subplot_titles=('Vitesse vs Temps', 'Accélération vs Temps',
-                                   'Coefficients de Friction μ', 'Forces'),
+                    subplot_titles=('Velocity vs Time', 'Acceleration vs Time',
+                                   'Friction Coefficients μ', 'Forces'),
                     vertical_spacing=0.1
                 )
                 
                 # 1. Velocity plot
                 fig_advanced.add_trace(
                     go.Scatter(x=metrics['time'], y=metrics['velocity']*1000, 
-                             mode='lines', line=dict(color='blue', width=2), name='Vitesse'),
+                             mode='lines', line=dict(color='blue', width=2), name='Velocity'),
                     row=1, col=1
                 )
                 
                 # 2. Acceleration plot
                 fig_advanced.add_trace(
                     go.Scatter(x=metrics['time'], y=metrics['acceleration']*1000,
-                             mode='lines', line=dict(color='red', width=2), name='Accélération'),
+                             mode='lines', line=dict(color='red', width=2), name='Acceleration'),
                     row=1, col=2
                 )
                 
                 # 3. Friction coefficients
                 fig_advanced.add_trace(
                     go.Scatter(x=friction_results['time'], y=friction_results['mu_kinetic_series'], 
-                              mode='lines', name='μ cinétique',
+                              mode='lines', name='μ kinetic',
                               line=dict(color='darkred', width=2)),
                     row=2, col=1
                 )
                 fig_advanced.add_trace(
                     go.Scatter(x=friction_results['time'], y=friction_results['mu_rolling_series'], 
-                              mode='lines', name='μ roulement',
+                              mode='lines', name='μ rolling',
                               line=dict(color='orange', width=2)),
                     row=2, col=1
                 )
@@ -631,55 +631,33 @@ if (st.session_state.current_df_valid is not None and
                 # 4. Forces plot
                 fig_advanced.add_trace(
                     go.Scatter(x=metrics['time'], y=metrics['resistance_force']*1000, mode='lines', 
-                             line=dict(color='red', width=2), name='F_résistance'),
+                             line=dict(color='red', width=2), name='F_resistance'),
                     row=2, col=2
                 )
                 
                 # Update layout
                 fig_advanced.update_layout(height=600, showlegend=False)
-                fig_advanced.update_xaxes(title_text="Temps (s)")
-                fig_advanced.update_yaxes(title_text="Vitesse (mm/s)", row=1, col=1)
-                fig_advanced.update_yaxes(title_text="Accélération (mm/s²)", row=1, col=2)
-                fig_advanced.update_yaxes(title_text="Coefficient de Friction", row=2, col=1)
+                fig_advanced.update_xaxes(title_text="Time (s)")
+                fig_advanced.update_yaxes(title_text="Velocity (mm/s)", row=1, col=1)
+                fig_advanced.update_yaxes(title_text="Acceleration (mm/s²)", row=1, col=2)
+                fig_advanced.update_yaxes(title_text="Friction Coefficient", row=2, col=1)
                 fig_advanced.update_yaxes(title_text="Force (mN)", row=2, col=2)
                 
                 st.plotly_chart(fig_advanced, use_container_width=True)
                 
                 # Results summary
-                st.markdown("### 📊 Résumé des Résultats")
+                st.markdown("### 📊 Results Summary")
                 
                 summary_col1, summary_col2, summary_col3 = st.columns(3)
                 
-                with summary_col1:
-                    st.markdown("**Cinématique**")
-                    st.write(f"• Krr: {metrics['krr']:.6f}")
-                    st.write(f"• Vitesse max: {metrics['max_velocity']*1000:.1f} mm/s")
-                    st.write(f"• Distance: {metrics['distance']*1000:.1f} mm")
-                    
-                with summary_col2:
-                    st.markdown("**Friction**")
-                    st.write(f"• μ cinétique: {friction_results['mu_kinetic_avg']:.4f}")
-                    st.write(f"• μ roulement: {friction_results['mu_rolling_avg']:.4f}")
-                    st.write(f"• μ énergétique: {mu_energetic_val:.4f}")
-                    
-                with summary_col3:
-                    st.markdown("**Énergies**")
-                    st.write(f"• Dissipée: {metrics['energy_dissipated']*1000:.2f} mJ")
-                    st.write(f"• Efficacité: {metrics['energy_efficiency']:.1f}%")
-                    
-                    # Validation
-                    if 0.03 <= metrics['krr'] <= 0.10:
-                        st.markdown('<div class="status-success">✅ Krr cohérent avec littérature</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('<div class="status-warning">⚠️ Krr à vérifier</div>', unsafe_allow_html=True)
-                
-                # === EXPORT DES DONNÉES NETTOYÉES ===
-                st.markdown("### 💾 Export des Données et Résultats")
+                with summary_
+                                # === EXPORT CLEANED DATA ===
+                st.markdown("### 💾 Export Data and Results")
                 
                 export_col1, export_col2, export_col3, export_col4 = st.columns(4)
                 
                 with export_col1:
-                    # Export données nettoyées brutes
+                    # Export raw cleaned data
                     df_clean_for_export = pd.DataFrame({
                         'Frame': range(len(metrics['time'])),
                         'Frame_Original': df_clean['Frame'].values if 'df_clean' in locals() else range(len(metrics['time'])),
@@ -690,50 +668,50 @@ if (st.session_state.current_df_valid is not None and
                     
                     csv_cleaned_data = df_clean_for_export.to_csv(index=False)
                     st.download_button(
-                        label="🧹 Données Nettoyées (CSV)",
+                        label="🧹 Cleaned Data (CSV)",
                         data=csv_cleaned_data,
-                        file_name=f"donnees_nettoyees_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        file_name=f"cleaned_data_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv",
-                        help="Données originales sans les artefacts de début/fin"
+                        help="Original data without start/end artifacts"
                     )
                 
                 with export_col2:
-                    # Export séries temporelles calculées
+                    # Export calculated time series
                     temporal_data = pd.DataFrame({
-                        'temps_s': metrics['time'],
-                        'vitesse_mm_s': metrics['velocity'] * 1000,
+                        'time_s': metrics['time'],
+                        'velocity_mm_s': metrics['velocity'] * 1000,
                         'acceleration_mm_s2': metrics['acceleration'] * 1000,
-                        'force_resistance_mN': metrics['resistance_force'] * 1000,
-                        'puissance_mW': metrics['power'] * 1000,
-                        'energie_cinetique_mJ': metrics['energy_kinetic'] * 1000,
+                        'resistance_force_mN': metrics['resistance_force'] * 1000,
+                        'power_mW': metrics['power'] * 1000,
+                        'kinetic_energy_mJ': metrics['energy_kinetic'] * 1000,
                         'mu_kinetic': friction_results['mu_kinetic_series'],
                         'mu_rolling': friction_results['mu_rolling_series'],
-                        'vitesse_x_mm_s': metrics['vx'] * 1000,
-                        'vitesse_y_mm_s': metrics['vy'] * 1000
+                        'velocity_x_mm_s': metrics['vx'] * 1000,
+                        'velocity_y_mm_s': metrics['vy'] * 1000
                     })
                     
                     csv_temporal = temporal_data.to_csv(index=False)
                     st.download_button(
-                        label="📈 Séries Temporelles (CSV)",
+                        label="📈 Time Series (CSV)",
                         data=csv_temporal,
-                        file_name=f"series_temporelles_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        file_name=f"time_series_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv",
-                        help="Toutes les courbes calculées vs temps"
+                        help="All calculated curves vs time"
                     )
                 
                 with export_col3:
-                    # Export résultats synthèses
+                    # Export synthesis results
                     synthesis_data = pd.DataFrame({
-                        'Parametre': [
-                            'Krr_coefficient', 'vitesse_initiale_mm_s', 'vitesse_finale_mm_s', 
-                            'distance_totale_mm', 'duree_s', 'vitesse_max_mm_s',
-                            'acceleration_max_mm_s2', 'energie_dissipee_mJ', 'efficacite_energie_pourcent',
-                            'mu_cinetique_moyen', 'mu_roulement_moyen', 'mu_energetique',
-                            'force_normale_mN', 'force_resistance_moyenne_mN', 'points_originaux',
-                            'points_nettoyes', 'pourcentage_donnees_gardees', 'points_debut_supprimes',
-                            'points_fin_supprimes'
+                        'Parameter': [
+                            'Krr_coefficient', 'initial_velocity_mm_s', 'final_velocity_mm_s', 
+                            'total_distance_mm', 'duration_s', 'max_velocity_mm_s',
+                            'max_acceleration_mm_s2', 'energy_dissipated_mJ', 'energy_efficiency_percent',
+                            'mu_kinetic_average', 'mu_rolling_average', 'mu_energetic',
+                            'normal_force_mN', 'resistance_force_average_mN', 'original_points',
+                            'cleaned_points', 'data_kept_percentage', 'start_points_removed',
+                            'end_points_removed'
                         ],
-                        'Valeur': [
+                        'Value': [
                             metrics['krr'], metrics['v0'] * 1000, metrics['vf'] * 1000,
                             metrics['distance'] * 1000, metrics['duration'], metrics['max_velocity'] * 1000,
                             metrics['max_acceleration'] * 1000, metrics['energy_dissipated'] * 1000, metrics['energy_efficiency'],
@@ -743,119 +721,119 @@ if (st.session_state.current_df_valid is not None and
                             cleaning_info.get('percentage_kept', 0), cleaning_info.get('start_removed', 0),
                             cleaning_info.get('end_removed', 0)
                         ],
-                        'Unite': [
-                            'sans_unite', 'mm/s', 'mm/s', 'mm', 's', 'mm/s',
-                            'mm/s2', 'mJ', 'pourcent', 'sans_unite', 'sans_unite', 'sans_unite',
-                            'mN', 'mN', 'points', 'points', 'pourcent', 'points', 'points'
+                        'Unit': [
+                            'dimensionless', 'mm/s', 'mm/s', 'mm', 's', 'mm/s',
+                            'mm/s2', 'mJ', 'percent', 'dimensionless', 'dimensionless', 'dimensionless',
+                            'mN', 'mN', 'points', 'points', 'percent', 'points', 'points'
                         ]
                     })
                     
                     csv_synthesis = synthesis_data.to_csv(index=False)
                     st.download_button(
-                        label="📊 Résultats Synthèse (CSV)",
+                        label="📊 Results Summary (CSV)",
                         data=csv_synthesis,
-                        file_name=f"resultats_synthese_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        file_name=f"results_summary_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv",
-                        help="Tous les résultats principaux en format tableau"
+                        help="All main results in table format"
                     )
                 
                 with export_col4:
-                    # Export rapport complet
+                    # Export complete report
                     complete_report = f"""
-# 📊 RAPPORT COMPLET D'ANALYSE DE FRICTION
+# 📊 COMPLETE FRICTION ANALYSIS REPORT
 Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-## 🧹 NETTOYAGE DES DONNÉES
-- Points originaux: {cleaning_info.get('original_length', 0)}
-- Points nettoyés: {cleaning_info.get('cleaned_length', 0)}
-- Pourcentage conservé: {cleaning_info.get('percentage_kept', 0):.1f}%
-- Points supprimés au début: {cleaning_info.get('start_removed', 0)}
-- Points supprimés à la fin: {cleaning_info.get('end_removed', 0)}
+## 🧹 DATA CLEANING
+- Original points: {cleaning_info.get('original_length', 0)}
+- Cleaned points: {cleaning_info.get('cleaned_length', 0)}
+- Percentage retained: {cleaning_info.get('percentage_kept', 0):.1f}%
+- Points removed at start: {cleaning_info.get('start_removed', 0)}
+- Points removed at end: {cleaning_info.get('end_removed', 0)}
 
-## 🔬 PARAMÈTRES EXPÉRIMENTAUX
-- Masse sphère: {mass_g}g
-- Rayon sphère: {radius_mm}mm
-- FPS caméra: {fps_adv}
-- Angle inclinaison: {angle_deg_adv}°
+## 🔬 EXPERIMENTAL PARAMETERS
+- Sphere mass: {mass_g}g
+- Sphere radius: {radius_mm}mm
+- Camera FPS: {fps_adv}
+- Inclination angle: {angle_deg_adv}°
 - Calibration: {pixels_per_mm_adv:.2f} px/mm
 
-## 📊 RÉSULTATS CINÉMATIQUES
-- Coefficient Krr: {metrics['krr']:.6f}
-- Vitesse initiale: {metrics['v0']*1000:.2f} mm/s
-- Vitesse finale: {metrics['vf']*1000:.2f} mm/s
-- Vitesse maximale: {metrics['max_velocity']*1000:.2f} mm/s
-- Distance totale: {metrics['distance']*1000:.2f} mm
-- Durée: {metrics['duration']:.3f} s
-- Accélération max: {metrics['max_acceleration']*1000:.2f} mm/s²
+## 📊 KINEMATIC RESULTS
+- Krr coefficient: {metrics['krr']:.6f}
+- Initial velocity: {metrics['v0']*1000:.2f} mm/s
+- Final velocity: {metrics['vf']*1000:.2f} mm/s
+- Maximum velocity: {metrics['max_velocity']*1000:.2f} mm/s
+- Total distance: {metrics['distance']*1000:.2f} mm
+- Duration: {metrics['duration']:.3f} s
+- Max acceleration: {metrics['max_acceleration']*1000:.2f} mm/s²
 
-## 🔥 RÉSULTATS FRICTION
-- μ cinétique moyen: {friction_results['mu_kinetic_avg']:.4f}
-- μ roulement moyen: {friction_results['mu_rolling_avg']:.4f}
-- μ énergétique: {friction_results['mu_energetic']:.4f}
-- Force normale: {friction_results['F_normal']*1000:.2f} mN
-- Force résistance moyenne: {friction_results['F_resistance_avg']*1000:.2f} mN
+## 🔥 FRICTION RESULTS
+- Average μ kinetic: {friction_results['mu_kinetic_avg']:.4f}
+- Average μ rolling: {friction_results['mu_rolling_avg']:.4f}
+- μ energetic: {friction_results['mu_energetic']:.4f}
+- Normal force: {friction_results['F_normal']*1000:.2f} mN
+- Average resistance force: {friction_results['F_resistance_avg']*1000:.2f} mN
 
-## ⚡ BILAN ÉNERGÉTIQUE
-- Énergie initiale: {metrics['energy_initial']*1000:.2f} mJ
-- Énergie finale: {metrics['energy_final']*1000:.2f} mJ
-- Énergie dissipée: {metrics['energy_dissipated']*1000:.2f} mJ
-- Efficacité énergétique: {metrics['energy_efficiency']:.1f}%
+## ⚡ ENERGY BALANCE
+- Initial energy: {metrics['energy_initial']*1000:.2f} mJ
+- Final energy: {metrics['energy_final']*1000:.2f} mJ
+- Dissipated energy: {metrics['energy_dissipated']*1000:.2f} mJ
+- Energy efficiency: {metrics['energy_efficiency']:.1f}%
 
 ## ✅ VALIDATION
-- Krr cohérent avec littérature: {"OUI" if 0.03 <= metrics['krr'] <= 0.10 else "NON"}
-- Plage Van Wal (2017): 0.05-0.07
-- Status: {"✅ Valide" if 0.03 <= metrics['krr'] <= 0.10 else "⚠️ À vérifier"}
+- Krr consistent with literature: {"YES" if 0.03 <= metrics['krr'] <= 0.10 else "NO"}
+- Van Wal (2017) range: 0.05-0.07
+- Status: {"✅ Valid" if 0.03 <= metrics['krr'] <= 0.10 else "⚠️ To be verified"}
 
-## 🎯 RECOMMANDATIONS
-1. Nettoyage automatique appliqué avec succès
-2. {"Résultats cohérents avec la littérature" if 0.03 <= metrics['krr'] <= 0.10 else "Vérifier les paramètres expérimentaux"}
-3. {"Qualité des données excellente" if cleaning_info.get('percentage_kept', 0) > 80 else "Améliorer la qualité d'acquisition"}
-4. Friction grain-sphère caractérisée avec précision
+## 🎯 RECOMMENDATIONS
+1. Automatic cleaning successfully applied
+2. {"Results consistent with literature" if 0.03 <= metrics['krr'] <= 0.10 else "Verify experimental parameters"}
+3. {"Excellent data quality" if cleaning_info.get('percentage_kept', 0) > 80 else "Improve acquisition quality"}
+4. Grain-sphere friction accurately characterized
 
-## 📁 FICHIERS GÉNÉRÉS
-- donnees_nettoyees_[timestamp].csv: Données brutes nettoyées
-- series_temporelles_[timestamp].csv: Toutes les courbes vs temps  
-- resultats_synthese_[timestamp].csv: Tableau des résultats principaux
-- rapport_complet_[timestamp].txt: Ce rapport détaillé
+## 📁 GENERATED FILES
+- cleaned_data_[timestamp].csv: Cleaned raw data
+- time_series_[timestamp].csv: All curves vs time  
+- results_summary_[timestamp].csv: Main results table
+- complete_report_[timestamp].txt: This detailed report
 
 Institution: Osaka University - Department of Cosmic Earth Science
-Logiciel: Plateforme d'Analyse de Résistance au Roulement + Friction
-Version: Code 3 - Analyse Complète avec Nettoyage Automatique
+Software: Rolling Resistance Analysis Platform + Friction
+Version: Code 3 - Complete Analysis with Automatic Cleaning
 """
                     
                     st.download_button(
-                        label="📄 Rapport Complet (TXT)",
+                        label="📄 Complete Report (TXT)",
                         data=complete_report,
-                        file_name=f"rapport_complet_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                        file_name=f"complete_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.txt",
                         mime="text/plain",
-                        help="Rapport détaillé avec tous les résultats et métadonnées"
+                        help="Detailed report with all results and metadata"
                     )
                 
-                # Information sur les exports
+                # Export information
                 st.info("""
-                💡 **Fichiers d'export disponibles :**
-                - **🧹 Données Nettoyées** : CSV avec Frame, X_center, Y_center, Radius (sans artefacts)
-                - **📈 Séries Temporelles** : Toutes les courbes calculées (vitesse, accélération, friction, etc.)
-                - **📊 Résultats Synthèse** : Tableau avec tous les résultats numériques principaux
-                - **📄 Rapport Complet** : Rapport détaillé avec paramètres, résultats et recommandations
+                💡 **Available export files:**
+                - **🧹 Cleaned Data**: CSV with Frame, X_center, Y_center, Radius (without artifacts)
+                - **📈 Time Series**: All calculated curves (velocity, acceleration, friction, etc.)
+                - **📊 Results Summary**: Table with all main numerical results
+                - **📄 Complete Report**: Detailed report with parameters, results and recommendations
                 """)
                 
-                st.success("✅ Analyse de friction terminée avec options d'export complètes!")
+                st.success("✅ Friction analysis completed with comprehensive export options!")
                 
             else:
-                st.error("❌ Impossible de calculer les métriques - données insuffisantes")
+                st.error("❌ Unable to calculate metrics - insufficient data")
     
     # Placeholder for other analysis types
-    elif analysis_type == "📈 Code 1 : Visualisation de Trajectoire":
-        st.markdown("## 📈 Code 1 : Visualisation de Trajectoire")
-        st.markdown("*Système complet de détection avec analyse de trajectoire*")
+    elif analysis_type == "📈 Code 1: Trajectory Visualization":
+        st.markdown("## 📈 Code 1: Trajectory Visualization")
+        st.markdown("*Complete detection system with trajectory analysis*")
         
-        # Nettoyage automatique des données pour Code 1
+        # Automatic data cleaning for Code 1
         df_clean, cleaning_info = clean_data_robust(df_valid)
         
         if "error" not in cleaning_info:
-            # Affichage du nettoyage
-            st.markdown("### 🧹 Nettoyage Automatique des Données")
+            # Display cleaning
+            st.markdown("### 🧹 Automatic Data Cleaning")
             
             clean_col1, clean_col2, clean_col3 = st.columns(3)
             
@@ -863,7 +841,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{cleaning_info['start_removed']}</div>
-                    <div class="metric-label">Points Début Supprimés</div>
+                    <div class="metric-label">Start Points Removed</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -871,7 +849,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{cleaning_info['end_removed']}</div>
-                    <div class="metric-label">Points Fin Supprimés</div>
+                    <div class="metric-label">End Points Removed</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -879,17 +857,17 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{cleaning_info['percentage_kept']:.1f}%</div>
-                    <div class="metric-label">Données Conservées</div>
+                    <div class="metric-label">Data Retained</div>
                 </div>
                 """, unsafe_allow_html=True)
             
-            # Visualisation avec données nettoyées
-            st.markdown("### 🎯 Trajectoire de la Sphère (Données Nettoyées)")
+            # Visualization with cleaned data
+            st.markdown("### 🎯 Sphere Trajectory (Cleaned Data)")
             
             fig = make_subplots(
                 rows=2, cols=2,
-                subplot_titles=('🛤️ Trajectoire Nettoyée', '📍 Position X vs Temps', 
-                               '📍 Position Y vs Temps', '⚪ Évolution du Rayon'),
+                subplot_titles=('🛤️ Cleaned Trajectory', '📍 X Position vs Time', 
+                               '📍 Y Position vs Time', '⚪ Radius Evolution'),
                 specs=[[{"secondary_y": False}, {"secondary_y": False}],
                        [{"secondary_y": False}, {"secondary_y": False}]]
             )
@@ -903,7 +881,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                                     size=6,
                                     colorbar=dict(title="Frame")),
                           line=dict(width=2),
-                          name='Trajectoire Nettoyée'),
+                          name='Cleaned Trajectory'),
                 row=1, col=1
             )
             
@@ -913,7 +891,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                           mode='lines+markers', 
                           line=dict(color='#3498db', width=2),
                           marker=dict(size=4),
-                          name='Position X'),
+                          name='X Position'),
                 row=1, col=2
             )
             
@@ -923,7 +901,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                           mode='lines+markers',
                           line=dict(color='#e74c3c', width=2),
                           marker=dict(size=4),
-                          name='Position Y'),
+                          name='Y Position'),
                 row=2, col=1
             )
             
@@ -933,18 +911,18 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                           mode='lines+markers',
                           line=dict(color='#2ecc71', width=2),
                           marker=dict(size=4),
-                          name='Rayon'),
+                          name='Radius'),
                 row=2, col=2
             )
             
             fig.update_layout(height=600, showlegend=False,
-                             title_text="Analyse de Détection avec Données Nettoyées")
+                             title_text="Detection Analysis with Cleaned Data")
             fig.update_yaxes(autorange="reversed", row=1, col=1)
             
             st.plotly_chart(fig, use_container_width=True)
             
-            # Statistiques avec données nettoyées
-            st.markdown("### 📊 Statistiques de Détection (Données Nettoyées)")
+            # Statistics with cleaned data
+            st.markdown("### 📊 Detection Statistics (Cleaned Data)")
             
             stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
             
@@ -956,7 +934,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{total_distance:.1f}</div>
-                    <div class="metric-label">Distance Totale (px)</div>
+                    <div class="metric-label">Total Distance (px)</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -969,7 +947,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                     st.markdown(f"""
                     <div class="metric-item">
                         <div class="metric-value">{avg_speed:.2f}</div>
-                        <div class="metric-label">Vitesse Moyenne (px/frame)</div>
+                        <div class="metric-label">Average Speed (px/frame)</div>
                     </div>
                     """, unsafe_allow_html=True)
             
@@ -978,7 +956,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{vertical_displacement:.1f}</div>
-                    <div class="metric-label">Déplacement Vertical (px)</div>
+                    <div class="metric-label">Vertical Displacement (px)</div>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -988,24 +966,24 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{avg_radius:.1f} ± {radius_std:.1f}</div>
-                    <div class="metric-label">Rayon Moyen (px)</div>
+                    <div class="metric-label">Average Radius (px)</div>
                 </div>
                 """, unsafe_allow_html=True)
             
-            st.success("✅ Code 1 avec nettoyage automatique terminé!")
+            st.success("✅ Code 1 with automatic cleaning completed!")
         else:
-            st.error("❌ Impossible de nettoyer les données pour le Code 1")
+            st.error("❌ Unable to clean data for Code 1")
         
-    elif analysis_type == "📊 Code 2 : Analyse Krr":
-        st.markdown("## 📊 Code 2 : Analyse Krr") 
-        st.markdown("*Calculs physiques pour déterminer le coefficient Krr avec données nettoyées*")
+    elif analysis_type == "📊 Code 2: Krr Analysis":
+        st.markdown("## 📊 Code 2: Krr Analysis") 
+        st.markdown("*Physical calculations to determine Krr coefficient with cleaned data*")
         
-        # Nettoyage automatique des données pour Code 2
+        # Automatic data cleaning for Code 2
         df_clean, cleaning_info = clean_data_robust(df_valid)
         
         if "error" not in cleaning_info:
-            # Affichage du nettoyage
-            st.markdown("### 🧹 Nettoyage Automatique Appliqué")
+            # Display cleaning
+            st.markdown("### 🧹 Automatic Cleaning Applied")
             
             clean_col1, clean_col2, clean_col3 = st.columns(3)
             
@@ -1013,7 +991,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{cleaning_info['percentage_kept']:.1f}%</div>
-                    <div class="metric-label">Données Conservées</div>
+                    <div class="metric-label">Data Retained</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -1021,7 +999,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{cleaning_info['cleaned_length']}</div>
-                    <div class="metric-label">Points Valides</div>
+                    <div class="metric-label">Valid Points</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -1029,41 +1007,41 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{cleaning_info['start_removed'] + cleaning_info['end_removed']}</div>
-                    <div class="metric-label">Artefacts Supprimés</div>
+                    <div class="metric-label">Artifacts Removed</div>
                 </div>
                 """, unsafe_allow_html=True)
             
-            # Paramètres sphère
-            st.markdown("### 🔵 Paramètres de la Sphère")
+            # Sphere parameters
+            st.markdown("### 🔵 Sphere Parameters")
             param_col1, param_col2, param_col3 = st.columns(3)
             
             with param_col1:
-                sphere_radius_mm = st.number_input("Rayon (mm)", value=15.0, min_value=1.0)
-                sphere_mass_g = st.number_input("Masse (g)", value=10.0, min_value=0.1)
+                sphere_radius_mm = st.number_input("Radius (mm)", value=15.0, min_value=1.0)
+                sphere_mass_g = st.number_input("Mass (g)", value=10.0, min_value=0.1)
                 
             with param_col2:
-                fps = st.number_input("FPS caméra", value=250.0, min_value=1.0)
+                fps = st.number_input("Camera FPS", value=250.0, min_value=1.0)
                 angle_deg = st.number_input("Angle (°)", value=15.0, min_value=0.1)
                 
             with param_col3:
-                # Calibration automatique
+                # Automatic calibration
                 avg_radius_px = df_clean['Radius'].mean()
                 auto_cal = avg_radius_px / sphere_radius_mm
                 st.markdown(f"""
                 <div class="metric-item">
                     <div class="metric-value">{auto_cal:.2f}</div>
-                    <div class="metric-label">Calibration Auto (px/mm)</div>
+                    <div class="metric-label">Auto Calibration (px/mm)</div>
                 </div>
                 """, unsafe_allow_html=True)
                 pixels_per_mm = auto_cal
             
-            # Calculs Krr avec données nettoyées
-            if st.button("🧮 Calculer Krr (Données Nettoyées)"):
-                # Utiliser directement calculate_advanced_metrics qui fait déjà le nettoyage
+            # Krr calculations with cleaned data
+            if st.button("🧮 Calculate Krr (Cleaned Data)"):
+                # Use calculate_advanced_metrics directly which already does cleaning
                 metrics = calculate_advanced_metrics(df_valid, fps, pixels_per_mm, sphere_mass_g, angle_deg)
                 
                 if metrics and metrics['krr'] is not None:
-                    st.markdown("### 📊 Résultats Krr (Sans Artefacts)")
+                    st.markdown("### 📊 Krr Results (Without Artifacts)")
                     
                     result_col1, result_col2, result_col3, result_col4 = st.columns(4)
                     
@@ -1071,7 +1049,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                         st.markdown(f"""
                         <div class="metric-item">
                             <div class="metric-value">{metrics['v0']*1000:.1f}</div>
-                            <div class="metric-label">V₀ (vitesse initiale)</div>
+                            <div class="metric-label">V₀ (initial velocity)</div>
                             <div class="metric-unit">mm/s</div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -1080,7 +1058,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                         st.markdown(f"""
                         <div class="metric-item">
                             <div class="metric-value">{metrics['vf']*1000:.1f}</div>
-                            <div class="metric-label">Vf (vitesse finale)</div>
+                            <div class="metric-label">Vf (final velocity)</div>
                             <div class="metric-unit">mm/s</div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -1089,7 +1067,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                         st.markdown(f"""
                         <div class="metric-item">
                             <div class="metric-value">{metrics['distance']*1000:.1f}</div>
-                            <div class="metric-label">Distance totale</div>
+                            <div class="metric-label">Total distance</div>
                             <div class="metric-unit">mm</div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -1098,20 +1076,20 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                         st.markdown(f"""
                         <div class="metric-item">
                             <div class="metric-value">{metrics['krr']:.6f}</div>
-                            <div class="metric-label"><strong>Coefficient Krr</strong></div>
+                            <div class="metric-label"><strong>Krr Coefficient</strong></div>
                         </div>
                         """, unsafe_allow_html=True)
                         
                         # Validation
                         if 0.03 <= metrics['krr'] <= 0.10:
-                            st.markdown('<div class="status-success">✅ Cohérent avec Van Wal (2017)</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="status-success">✅ Consistent with Van Wal (2017)</div>', unsafe_allow_html=True)
                         elif metrics['krr'] < 0:
-                            st.markdown('<div class="status-error">⚠️ Krr négatif - vérifier données</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="status-error">⚠️ Negative Krr - check data</div>', unsafe_allow_html=True)
                         else:
-                            st.markdown('<div class="status-warning">⚠️ Différent de la littérature</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="status-warning">⚠️ Different from literature</div>', unsafe_allow_html=True)
                     
-                    # Graphique vitesse nettoyée
-                    st.markdown("### 🎯 Profil de Vitesse (Données Nettoyées)")
+                    # Cleaned velocity graph
+                    st.markdown("### 🎯 Velocity Profile (Cleaned Data)")
                     
                     fig_krr = go.Figure()
                     fig_krr.add_trace(go.Scatter(
@@ -1119,50 +1097,50 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                         y=metrics['velocity']*1000, 
                         mode='lines+markers',
                         line=dict(color='blue', width=3),
-                        name='Vitesse Nettoyée'
+                        name='Cleaned Velocity'
                     ))
                     
-                    # Lignes de référence
+                    # Reference lines
                     fig_krr.add_hline(y=metrics['v0']*1000, line_dash="dash", line_color="green", 
                                      annotation_text=f"V₀ = {metrics['v0']*1000:.1f} mm/s")
                     fig_krr.add_hline(y=metrics['vf']*1000, line_dash="dash", line_color="red",
                                      annotation_text=f"Vf = {metrics['vf']*1000:.1f} mm/s")
                     
                     fig_krr.update_layout(
-                        title="Vitesse vs Temps (Sans Artefacts)",
-                        xaxis_title="Temps (s)",
-                        yaxis_title="Vitesse (mm/s)",
+                        title="Velocity vs Time (Without Artifacts)",
+                        xaxis_title="Time (s)",
+                        yaxis_title="Velocity (mm/s)",
                         height=400
                     )
                     
                     st.plotly_chart(fig_krr, use_container_width=True)
                     
-                    st.success("✅ Code 2 avec nettoyage automatique terminé!")
+                    st.success("✅ Code 2 with automatic cleaning completed!")
                 else:
-                    st.error("❌ Impossible de calculer Krr")
+                    st.error("❌ Unable to calculate Krr")
         else:
-            st.error("❌ Impossible de nettoyer les données pour le Code 2")
+            st.error("❌ Unable to clean data for Code 2")
         
-    elif analysis_type == "🔍 Comparaison Multi-Expériences":
-        st.markdown("## 🔍 Comparaison Multi-Expériences")
-        st.markdown("*Comparez plusieurs expériences et exportez les résultats complets*")
+    elif analysis_type == "🔍 Multi-Experiment Comparison":
+        st.markdown("## 🔍 Multi-Experiment Comparison")
+        st.markdown("*Compare multiple experiments and export complete results*")
         
-        # Section 1: Gestion des expériences sauvegardées
-        st.markdown("### 💾 Gestion des Expériences")
+        # Section 1: Management of saved experiments
+        st.markdown("### 💾 Experiment Management")
         
-        # Bouton pour sauvegarder l'expérience actuelle
+        # Button to save current experiment
         if st.session_state.current_df_valid is not None:
             save_col1, save_col2, save_col3 = st.columns(3)
             
             with save_col1:
-                save_name = st.text_input("Nom pour sauvegarde", value=f"Exp_{len(st.session_state.experiments)+1}")
+                save_name = st.text_input("Name for saving", value=f"Exp_{len(st.session_state.experiments)+1}")
             with save_col2:
-                save_water = st.number_input("Teneur en eau (%)", value=water_content, key="save_water")
+                save_water = st.number_input("Water content (%)", value=water_content, key="save_water")
             with save_col3:
-                save_sphere = st.selectbox("Type sphère", ["Steel", "Plastic", "Glass"], key="save_sphere")
+                save_sphere = st.selectbox("Sphere type", ["Steel", "Plastic", "Glass"], key="save_sphere")
             
-            if st.button("💾 Sauvegarder expérience actuelle"):
-                # Calculer les métriques pour l'expérience actuelle
+            if st.button("💾 Save current experiment"):
+                # Calculate metrics for current experiment
                 df_clean, cleaning_info = clean_data_robust(st.session_state.current_df_valid)
                 metrics = calculate_advanced_metrics(st.session_state.current_df_valid)
                 friction_results = calculate_friction_coefficients(st.session_state.current_df_valid)
@@ -1184,21 +1162,21 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                     'data': st.session_state.current_df,
                     'metadata': metadata
                 }
-                st.success(f"✅ Expérience '{save_name}' sauvegardée avec métriques complètes!")
+                st.success(f"✅ Experiment '{save_name}' saved with complete metrics!")
         
-        # Boutons de gestion
+        # Management buttons
         manage_col1, manage_col2 = st.columns(2)
         
         with manage_col1:
-            if st.button("📊 Charger expériences d'exemple"):
-                # Créer des expériences d'exemple avec différentes conditions
+            if st.button("📊 Load sample experiments"):
+                # Create sample experiments with different conditions
                 example_conditions = [
-                    (0, "Steel", "Sec"),
-                    (5, "Steel", "Faible_Humidite"), 
-                    (10, "Steel", "Moyenne_Humidite"),
-                    (15, "Steel", "Haute_Humidite"),
-                    (10, "Plastic", "Plastic_Moyenne"),
-                    (10, "Glass", "Glass_Moyenne")
+                    (0, "Steel", "Dry"),
+                    (5, "Steel", "Low_Humidity"), 
+                    (10, "Steel", "Medium_Humidity"),
+                    (15, "Steel", "High_Humidity"),
+                    (10, "Plastic", "Plastic_Medium"),
+                    (10, "Glass", "Glass_Medium")
                 ]
                 
                 for water, material, suffix in example_conditions:
@@ -1207,7 +1185,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                     )
                     df_valid_sample = df_sample[(df_sample['X_center'] != 0) & (df_sample['Y_center'] != 0) & (df_sample['Radius'] != 0)]
                     
-                    # Calculer métriques pour chaque exemple
+                    # Calculate metrics for each sample
                     metrics_sample = calculate_advanced_metrics(df_valid_sample)
                     friction_sample = calculate_friction_coefficients(df_valid_sample)
                     
@@ -1219,20 +1197,20 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                         'metadata': metadata_sample
                     }
                 
-                st.success("✅ 6 expériences d'exemple chargées avec métriques complètes!")
+                st.success("✅ 6 sample experiments loaded with complete metrics!")
                 st.rerun()
         
         with manage_col2:
-            if st.button("🧹 Effacer toutes les expériences"):
+            if st.button("🧹 Clear all experiments"):
                 st.session_state.experiments = {}
-                st.success("✅ Toutes les expériences effacées!")
+                st.success("✅ All experiments cleared!")
                 st.rerun()
         
-        # Section 2: Affichage des expériences disponibles
+        # Section 2: Display available experiments
         if st.session_state.experiments:
-            st.markdown("### 📋 Expériences Disponibles")
+            st.markdown("### 📋 Available Experiments")
             
-            # Créer tableau des expériences
+            # Create experiments table
             exp_overview = []
             for name, exp in st.session_state.experiments.items():
                 meta = exp['metadata']
@@ -1240,34 +1218,34 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 friction = meta.get('friction_results')
                 
                 exp_overview.append({
-                    'Expérience': name,
-                    'Teneur_Eau (%)': meta['water_content'],
-                    'Type_Sphère': meta['sphere_type'],
-                    'Succès (%)': f"{meta['success_rate']:.1f}",
-                    'Détections': meta['valid_detections'],
+                    'Experiment': name,
+                    'Water_Content (%)': meta['water_content'],
+                    'Sphere_Type': meta['sphere_type'],
+                    'Success (%)': f"{meta['success_rate']:.1f}",
+                    'Detections': meta['valid_detections'],
                     'Krr': f"{metrics['krr']:.6f}" if metrics and metrics['krr'] else "N/A",
-                    'μ_Cinétique': f"{friction['mu_kinetic_avg']:.4f}" if friction else "N/A",
+                    'μ_Kinetic': f"{friction['mu_kinetic_avg']:.4f}" if friction else "N/A",
                     'Date': meta['date']
                 })
             
             exp_df = pd.DataFrame(exp_overview)
             st.dataframe(exp_df, use_container_width=True)
             
-            # Section 3: Sélection pour comparaison
-            st.markdown("### 🔬 Sélection pour Comparaison")
+            # Section 3: Selection for comparison
+            st.markdown("### 🔬 Selection for Comparison")
             
             selected_experiments = st.multiselect(
-                "Choisissez les expériences à comparer:",
+                "Choose experiments to compare:",
                 options=list(st.session_state.experiments.keys()),
                 default=list(st.session_state.experiments.keys())[:min(6, len(st.session_state.experiments))]
             )
             
             if len(selected_experiments) >= 2:
                 
-                # Section 4: Analyse comparative
-                st.markdown("### 📊 Analyse Comparative Détaillée")
+                # Section 4: Comparative analysis
+                st.markdown("### 📊 Detailed Comparative Analysis")
                 
-                # Préparer les données de comparaison
+                # Prepare comparison data
                 comparison_data = []
                 
                 for exp_name in selected_experiments:
@@ -1279,13 +1257,13 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                     
                     if metrics and friction:
                         comparison_data.append({
-                            # Informations générales
-                            'Expérience': exp_name,
-                            'Teneur_eau': meta['water_content'],
-                            'Angle': 15.0,  # Valeur par défaut
-                            'Type_sphère': meta['sphere_type'],
+                            # General information
+                            'Experiment': exp_name,
+                            'Water_content': meta['water_content'],
+                            'Angle': 15.0,  # Default value
+                            'Sphere_type': meta['sphere_type'],
                             
-                            # Krr et cinématique de base
+                            # Krr and basic kinematics
                             'Krr': metrics['krr'],
                             'v0_ms': metrics['v0'],
                             'vf_ms': metrics['vf'],
@@ -1296,24 +1274,24 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                             'max_acceleration_mms2': metrics['max_acceleration'] * 1000,
                             'total_distance_mm': metrics['distance'] * 1000,
                             
-                            # Forces et friction
+                            # Forces and friction
                             'max_resistance_force_mN': friction['F_resistance_avg'] * 1000,
                             'avg_resistance_force_mN': friction['F_resistance_avg'] * 1000,
                             'mu_kinetic_avg': friction['mu_kinetic_avg'],
                             'mu_rolling_avg': friction['mu_rolling_avg'],
                             'mu_energetic': friction['mu_energetic'] if friction['mu_energetic'] else 0,
                             
-                            # Énergies
+                            # Energies
                             'energy_initial_mJ': metrics['energy_initial'] * 1000,
                             'energy_final_mJ': metrics['energy_final'] * 1000,
                             'energy_dissipated_mJ': metrics['energy_dissipated'] * 1000,
                             'energy_efficiency_percent': metrics['energy_efficiency'],
                             
-                            # Qualité et nettoyage
-                            'trajectory_efficiency_percent': 85.0 + np.random.normal(0, 5),  # Valeur simulée
-                            'vertical_variation_mm': 2.0 + np.random.normal(0, 0.5),  # Valeur simulée
+                            # Quality and cleaning
+                            'trajectory_efficiency_percent': 85.0 + np.random.normal(0, 5),  # Simulated value
+                            'vertical_variation_mm': 2.0 + np.random.normal(0, 0.5),  # Simulated value
                             'duration_s': metrics['duration'],
-                            'j_factor': 0.4,  # 2/5 pour sphère solide
+                            'j_factor': 0.4,  # 2/5 for solid sphere
                             'friction_coefficient_eff': friction['mu_kinetic_avg'],
                             'success_rate': meta['success_rate'],
                             'data_kept_percent': cleaning.get('percentage_kept', 100),
@@ -1323,65 +1301,65 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                 comp_df = pd.DataFrame(comparison_data)
                 
                 if len(comp_df) > 0:
-                    # Visualisations comparatives
+                    # Comparative visualizations
                     viz_col1, viz_col2 = st.columns(2)
                     
                     with viz_col1:
-                        # Krr vs Teneur en eau
-                        fig_krr = px.scatter(comp_df, x='Teneur_eau', y='Krr', 
-                                           color='Type_sphère', size='success_rate',
-                                           hover_data=['Expérience'],
-                                           title="🔍 Coefficient Krr vs Teneur en Eau")
+                        # Krr vs Water content
+                        fig_krr = px.scatter(comp_df, x='Water_content', y='Krr', 
+                                           color='Sphere_type', size='success_rate',
+                                           hover_data=['Experiment'],
+                                           title="🔍 Krr Coefficient vs Water Content")
                         
-                        # Ajouter ligne de tendance
+                        # Add trend line
                         if len(comp_df) >= 3:
-                            z = np.polyfit(comp_df['Teneur_eau'], comp_df['Krr'], 1)
+                            z = np.polyfit(comp_df['Water_content'], comp_df['Krr'], 1)
                             p = np.poly1d(z)
-                            x_trend = np.linspace(comp_df['Teneur_eau'].min(), comp_df['Teneur_eau'].max(), 100)
+                            x_trend = np.linspace(comp_df['Water_content'].min(), comp_df['Water_content'].max(), 100)
                             fig_krr.add_scatter(x=x_trend, y=p(x_trend), mode='lines', 
-                                              name='Tendance', line=dict(dash='dash', color='red'))
+                                              name='Trend', line=dict(dash='dash', color='red'))
                         
                         st.plotly_chart(fig_krr, use_container_width=True)
                     
                     with viz_col2:
-                        # Coefficients de friction
-                        fig_friction = px.bar(comp_df, x='Expérience', y='mu_kinetic_avg',
-                                            color='Teneur_eau',
-                                            title="🔥 Coefficients de Friction μ Cinétique")
+                        # Friction coefficients
+                        fig_friction = px.bar(comp_df, x='Experiment', y='mu_kinetic_avg',
+                                            color='Water_content',
+                                            title="🔥 Kinetic Friction Coefficients μ")
                         fig_friction.update_xaxes(tickangle=45)
                         st.plotly_chart(fig_friction, use_container_width=True)
                     
-                    # Graphiques supplémentaires
+                    # Additional graphs
                     viz_col3, viz_col4 = st.columns(2)
                     
                     with viz_col3:
-                        # Efficacité énergétique
-                        fig_energy = px.scatter(comp_df, x='Teneur_eau', y='energy_efficiency_percent',
-                                              color='Type_sphère', size='max_velocity_mms',
-                                              title="⚡ Efficacité Énergétique vs Humidité")
+                        # Energy efficiency
+                        fig_energy = px.scatter(comp_df, x='Water_content', y='energy_efficiency_percent',
+                                              color='Sphere_type', size='max_velocity_mms',
+                                              title="⚡ Energy Efficiency vs Humidity")
                         st.plotly_chart(fig_energy, use_container_width=True)
                     
                     with viz_col4:
-                        # Vitesses comparées
+                        # Compared velocities
                         fig_velocities = go.Figure()
-                        fig_velocities.add_trace(go.Scatter(x=comp_df['Teneur_eau'], y=comp_df['v0_mms'],
-                                                          mode='markers+lines', name='V₀ (initiale)',
+                        fig_velocities.add_trace(go.Scatter(x=comp_df['Water_content'], y=comp_df['v0_mms'],
+                                                          mode='markers+lines', name='V₀ (initial)',
                                                           marker=dict(color='blue', size=10)))
-                        fig_velocities.add_trace(go.Scatter(x=comp_df['Teneur_eau'], y=comp_df['vf_mms'],
-                                                          mode='markers+lines', name='Vf (finale)',
+                        fig_velocities.add_trace(go.Scatter(x=comp_df['Water_content'], y=comp_df['vf_mms'],
+                                                          mode='markers+lines', name='Vf (final)',
                                                           marker=dict(color='red', size=10)))
-                        fig_velocities.update_layout(title="🏃 Vitesses Initiales/Finales",
-                                                    xaxis_title="Teneur en Eau (%)",
-                                                    yaxis_title="Vitesse (mm/s)")
+                        fig_velocities.update_layout(title="🏃 Initial/Final Velocities",
+                                                    xaxis_title="Water Content (%)",
+                                                    yaxis_title="Velocity (mm/s)")
                         st.plotly_chart(fig_velocities, use_container_width=True)
                     
-                    # Section 5: Tableau de comparaison complet
-                    st.markdown("### 📋 Tableau de Comparaison Complet")
+                    # Section 5: Complete comparison table
+                    st.markdown("### 📋 Complete Comparison Table")
                     
-                    # Formater le tableau pour affichage
+                    # Format table for display
                     display_comp = comp_df.copy()
                     
-                    # Colonnes à formater
+                    # Columns to format
                     format_columns = {
                         'Krr': '{:.6f}',
                         'v0_mms': '{:.2f}',
@@ -1401,8 +1379,8 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                     
                     st.dataframe(display_comp, use_container_width=True)
                     
-                    # Section 6: Insights et statistiques
-                    st.markdown("### 🔍 Insights Clés")
+                    # Section 6: Insights and statistics
+                    st.markdown("### 🔍 Key Insights")
                     
                     insight_col1, insight_col2, insight_col3, insight_col4 = st.columns(4)
                     
@@ -1411,7 +1389,7 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                         st.markdown(f"""
                         <div class="metric-item">
                             <div class="metric-value">{krr_range:.6f}</div>
-                            <div class="metric-label">Variation Krr</div>
+                            <div class="metric-label">Krr Variation</div>
                         </div>
                         """, unsafe_allow_html=True)
                     
@@ -1420,17 +1398,17 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                         st.markdown(f"""
                         <div class="metric-item">
                             <div class="metric-value">{best_exp['energy_efficiency_percent']:.1f}%</div>
-                            <div class="metric-label">Meilleure Efficacité</div>
+                            <div class="metric-label">Best Efficiency</div>
                         </div>
                         """, unsafe_allow_html=True)
-                        st.caption(f"Expérience: {best_exp['Expérience']}")
+                        st.caption(f"Experiment: {best_exp['Experiment']}")
                     
                     with insight_col3:
                         friction_range = comp_df['mu_kinetic_avg'].max() - comp_df['mu_kinetic_avg'].min()
                         st.markdown(f"""
                         <div class="metric-item">
                             <div class="metric-value">{friction_range:.4f}</div>
-                            <div class="metric-label">Variation μ</div>
+                            <div class="metric-label">μ Variation</div>
                         </div>
                         """, unsafe_allow_html=True)
                     
@@ -1439,103 +1417,103 @@ Version: Code 3 - Analyse Complète avec Nettoyage Automatique
                         st.markdown(f"""
                         <div class="metric-item">
                             <div class="metric-value">{avg_success:.1f}%</div>
-                            <div class="metric-label">Succès Moyen</div>
+                            <div class="metric-label">Average Success</div>
                         </div>
                         """, unsafe_allow_html=True)
                     
-                    # Section 7: Export des données
-                    st.markdown("### 💾 Export des Résultats")
+                    # Section 7: Export data
+                    st.markdown("### 💾 Export Results")
                     
                     export_col1, export_col2, export_col3 = st.columns(3)
                     
                     with export_col1:
-                        # Export CSV complet
+                        # Complete CSV export
                         csv_complete = comp_df.to_csv(index=False)
                         st.download_button(
-                            label="📥 Export CSV Complet",
+                            label="📥 Complete CSV Export",
                             data=csv_complete,
-                            file_name=f"comparaison_friction_complete_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            file_name=f"complete_friction_comparison_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
                             mime="text/csv"
                         )
                     
                     with export_col2:
-                        # Export résumé
-                        summary_data = comp_df[['Expérience', 'Teneur_eau', 'Type_sphère', 'Krr', 
+                        # Summary export
+                        summary_data = comp_df[['Experiment', 'Water_content', 'Sphere_type', 'Krr', 
                                               'mu_kinetic_avg', 'energy_efficiency_percent', 'success_rate']].copy()
                         csv_summary = summary_data.to_csv(index=False)
                         st.download_button(
-                            label="📊 Export Résumé",
+                            label="📊 Summary Export",
                             data=csv_summary,
-                            file_name=f"resume_comparaison_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            file_name=f"comparison_summary_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
                             mime="text/csv"
                         )
                     
                     with export_col3:
-                        # Export rapport détaillé
+                        # Detailed report export
                         report_content = f"""
-# 📊 RAPPORT DE COMPARAISON MULTI-EXPÉRIENCES
+# 📊 MULTI-EXPERIMENT COMPARISON REPORT
 
-## Métadonnées
-- Date d'analyse: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
-- Nombre d'expériences: {len(comp_df)}
-- Gamme d'humidité: {comp_df['Teneur_eau'].min():.1f}% - {comp_df['Teneur_eau'].max():.1f}%
+## Metadata
+- Analysis date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+- Number of experiments: {len(comp_df)}
+- Humidity range: {comp_df['Water_content'].min():.1f}% - {comp_df['Water_content'].max():.1f}%
 
-## Résultats Globaux
-- Krr minimum: {comp_df['Krr'].min():.6f}
-- Krr maximum: {comp_df['Krr'].max():.6f}
-- Krr moyen: {comp_df['Krr'].mean():.6f}
-- Efficacité énergétique moyenne: {comp_df['energy_efficiency_percent'].mean():.1f}%
-- Coefficient friction moyen: {comp_df['mu_kinetic_avg'].mean():.4f}
+## Global Results
+- Minimum Krr: {comp_df['Krr'].min():.6f}
+- Maximum Krr: {comp_df['Krr'].max():.6f}
+- Average Krr: {comp_df['Krr'].mean():.6f}
+- Average energy efficiency: {comp_df['energy_efficiency_percent'].mean():.1f}%
+- Average friction coefficient: {comp_df['mu_kinetic_avg'].mean():.4f}
 
-## Insights Physiques
-- Variation de Krr avec humidité: {"Confirmée" if krr_range > 0.01 else "Faible"}
-- Effet du matériau: {"Significatif" if len(comp_df['Type_sphère'].unique()) > 1 else "Non testé"}
-- Qualité des données: {avg_success:.1f}% de succès moyen
+## Physical Insights
+- Krr variation with humidity: {"Confirmed" if krr_range > 0.01 else "Low"}
+- Material effect: {"Significant" if len(comp_df['Sphere_type'].unique()) > 1 else "Not tested"}
+- Data quality: {avg_success:.1f}% average success
 
-## Recommandations
-1. Humidité optimale: Analyser autour de {comp_df.loc[comp_df['Krr'].idxmin(), 'Teneur_eau']:.1f}%
-2. Matériau recommandé: {comp_df.loc[comp_df['energy_efficiency_percent'].idxmax(), 'Type_sphère']}
-3. Validation: Répéter expériences avec Krr > 0.10
+## Recommendations
+1. Optimal humidity: Analyze around {comp_df.loc[comp_df['Krr'].idxmin(), 'Water_content']:.1f}%
+2. Recommended material: {comp_df.loc[comp_df['energy_efficiency_percent'].idxmax(), 'Sphere_type']}
+3. Validation: Repeat experiments with Krr > 0.10
 
-## Données Complètes
+## Complete Data
 {comp_df.to_string(index=False)}
 """
                         
                         st.download_button(
-                            label="📄 Rapport Complet",
+                            label="📄 Complete Report",
                             data=report_content,
-                            file_name=f"rapport_comparaison_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                            file_name=f"comparison_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.txt",
                             mime="text/plain"
                         )
                     
-                    st.success(f"✅ Comparaison de {len(comp_df)} expériences terminée!")
+                    st.success(f"✅ Comparison of {len(comp_df)} experiments completed!")
                     
                 else:
-                    st.error("❌ Aucune donnée métrique disponible pour la comparaison")
+                    st.error("❌ No metric data available for comparison")
             
             else:
-                st.info("ℹ️ Sélectionnez au moins 2 expériences pour effectuer une comparaison")
+                st.info("ℹ️ Select at least 2 experiments to perform comparison")
         
         else:
-            st.warning("⚠️ Aucune expérience disponible. Sauvegardez d'abord des expériences ou chargez les exemples.")
+            st.warning("⚠️ No experiments available. Save experiments first or load samples.")
 
 else:
     # No data loaded message
     st.markdown("""
-    ## 🚀 Pour commencer
+    ## 🚀 Getting Started
     
-    Téléchargez vos données expérimentales ou utilisez les données d'exemple pour explorer la plateforme.
+    Upload your experimental data or use sample data to explore the platform.
     
-    ### 📋 Format de fichier attendu:
-    - **Frame**: Numéro d'image
-    - **X_center**: Position X du centre de la sphère
-    - **Y_center**: Position Y du centre de la sphère  
-    - **Radius**: Rayon détecté de la sphère
+    ### 📋 Expected file format:
+    - **Frame**: Image number
+    - **X_center**: X position of sphere center
+    - **Y_center**: Y position of sphere center  
+    - **Radius**: Detected sphere radius
     
-    ### 🔥 NOUVEAUTÉ - Analyse de Friction:
-    - **μ cinétique**: Coefficient de friction cinétique grain-sphère
-    - **μ roulement**: Coefficient de résistance au roulement pur
-    - **μ énergétique**: Basé sur la dissipation d'énergie
+    ### 🔥 NEW - Friction Analysis:
+    - **μ kinetic**: Kinetic friction coefficient grain-sphere
+    - **μ rolling**: Pure rolling resistance coefficient
+    - **μ energetic**: Based on energy dissipation
     """)
 
 # Sidebar info
@@ -1553,9 +1531,9 @@ st.sidebar.markdown("• Innovation: First humidity study")
 # Footer
 st.markdown("---")
 st.markdown("""
-### 🎓 Plateforme d'Analyse de Résistance au Roulement des Sphères
-*Développée pour l'analyse de la résistance au roulement des sphères sur matériau granulaire humide*
+### 🎓 Sphere Rolling Resistance Analysis Platform
+*Developed for analyzing sphere rolling resistance on humid granular material*
 
 **Institution:** Department of Cosmic Earth Science, Graduate School of Science, Osaka University  
-**Innovation:** Première étude de l'effet de l'humidité + **🔥 Analyse de friction grain-sphère**
+**Innovation:** First humidity effect study + **🔥 Grain-sphere friction analysis**
 """)
